@@ -67,6 +67,7 @@ void termFunc(int termNum)
 		PE_0(pthread_setname_np(pthread_self(), "T2")); // give the thread (terminal 2) a name
 
 		const char *senderFileName = "/etc/mailcap"; // for ubuntu target
+		//const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/emptyfile"; // for testing
 		// const char *senderFileName = "/etc/printers/epijs.cfg"; // for QNX 6.5 target
 		// const char *senderFileName = "/etc/system/sapphire/PasswordManager.tr"; // for BB Playbook target
 		COUT << "Will try to send the file:  " << senderFileName << endl;

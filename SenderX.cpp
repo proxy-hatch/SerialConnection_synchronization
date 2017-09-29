@@ -197,6 +197,8 @@ void SenderX::sendFile()
 		result = "OpenError";
 	}
 	else {
+
+
 		//blkNum = 0; // but first block sent will be block #1, not #0
 		prep1stBlk();
 
@@ -204,13 +206,65 @@ void SenderX::sendFile()
 		// below is just a starting point.  You can follow a
 		// 	different structure if you want.
 		char byteToReceive;
-		PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a 'C'
-		Crcflg = true;
 
+		PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a 'C'
+
+		if(byteToReceive == NAK || byteToReceive =='C')
+		{
+			if(bytesRd != 0) 
+			{
+				if(byteToReceive == NAK)
+				{
+					Crcflg = false;
+					cs1stBlk();
+					firstCrcBlk = false;
+				}
+			}
+			if(bytesRd == 0) 
+			{
+				if(byteToReceive==NAK)
+				{
+					firstCrcBlk = false;
+				}
+				sendByte(EOT); // send the first EOT
+
+				PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a 'C'
+
+				if(byteToReceive == ACK)
+				{
+					result = "1st EOT ACK'd";
+					PE(myClose(transferringFileD));
+					return;
+				}
+				else if(byteToReceive == NAK)
+				{
+					sendByte(EOT); // send the second EOT
+					if(byteToReceive == ACK)
+					{
+						result = "Done";
+						PE(myClose(transferringFileD));
+						return;
+					}
+				}
+			}
+		}
+		
 		while (bytesRd) {
 			sendBlkPrepNext();
 			// assuming below we get an ACK
 			PE_NOT(myRead(mediumD, &byteToReceive, 1), 1);
+			
+			if((byteToReceive == ACK) && bytesRd != 0)
+			{
+				errCnt = 0;
+				firstCrcBlk = false;
+			}
+			else if((byteToReceive == ACK) && bytesRd == 0)
+			{
+				sendByte(EOT); // send the first EOT
+				errCnt = 0;
+				firstCrcBlk = false;
+			}
 		}
 		sendByte(EOT); // send the first EOT
 		PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a NAK
@@ -223,6 +277,12 @@ void SenderX::sendFile()
 			VNS_ErrorPrinter("myClose(transferringFileD)", __func__, __FILE__, __LINE__, errno);
 		*/
 		result = "Done";  // should this be moved above somewhere??
+		
+		// -------craigs code------
+
+		// -------craigs code------
+
+
 	}
 }
 
