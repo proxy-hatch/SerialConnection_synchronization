@@ -57,7 +57,7 @@ public:
 
 protected:
 	int mediumD; // descriptor for serial port or delegate
-	const char* fileName; // receiver filename in receiver .h
+	const char* fileName;
 	int transferringFileD;	// descriptor for file being read from or written to.
 	bool Crcflg; // use CRC if true (or else checksum if false)
 

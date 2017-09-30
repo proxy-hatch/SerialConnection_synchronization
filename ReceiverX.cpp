@@ -55,10 +55,6 @@ void ReceiverX::receiveFile()
 	// should we test for error and set result to "OpenError" if necessary?
 	transferringFileD = PE2(creat(fileName, mode), fileName);
 
-
-
-
-	// -------craigs code------
 	// ***** improve this member function *****
 
 	// below is just an example template.  You can follow a
@@ -66,23 +62,8 @@ void ReceiverX::receiveFile()
 
 	// inform sender that the receiver is ready and that the
 	//		sender can send the first block
-
-	// In PeerX constructor, NCGbyte is 'C' since useCrc is true by default
-	sendByte(NCGbyte);
-
-	sendByte(ACK); // ACK the second EOT
-	result = "ACK is sent";
-	return;
-	// If EOT is received (file is empty), send ACK
-	if(myRead(mediumD, rcvBlk, 1))
-	{
-		if(rcvBlk[0] == EOT)
-		{
-			sendByte(ACK); // ACK the second EOT
-			result = "Done";
-			return;
-		}
-	}
+	
+	sendByte(NCGbyte); // 'C' or CRC by default
 
 	while(PE_NOT(myRead(mediumD, rcvBlk, 1), 1), (rcvBlk[0] == SOH))
 	{
@@ -90,20 +71,12 @@ void ReceiverX::receiveFile()
 		sendByte(ACK);
 		writeChunk();
 	};
-
-
-	
 	// EOT was presumably just read in the condition for the while loop
 	sendByte(NAK); // NAK the first EOT
 	PE_NOT(myRead(mediumD, rcvBlk, 1), 1); // presumably read in another EOT
 	sendByte(ACK); // ACK the second EOT
 	PE(close(transferringFileD));
 	result = "Done"; // move this line above somewhere?
-
-
-
-	// -------craigs code------
-
 }
 
 /* Only called after an SOH character has been received.

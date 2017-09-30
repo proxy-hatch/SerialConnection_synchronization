@@ -136,23 +136,39 @@ void SenderX::genBlk(uint8_t blkBuf[BLK_SZ_CRC])
 void SenderX::prep1stBlk()
 {
 	// **** this function will need to be modified ****
-	genBlk(blkBuf);
+	genBlk(blkBufs[0]);
 }
 
 
 void SenderX::cs1stBlk()
 {
 	// **** this function will need to be modified ****
+	Crcflg = false;
+	genBlk(blkBufs[1]);
 }
 
 /* while sending the now current block for the first time, prepare the next block if possible.
+
+	Note: Blk # blkBufs[0] blkBufs[1] ACKNAK
+			1		0			1		ACK
+			2		1			0		NAK
+			3		0			1		ACK
+
 */
 void SenderX::sendBlkPrepNext()
 {
 	// **** this function will need to be modified ****
 	blkNum ++; // 1st block about to be sent or previous block ACK'd
-	uint8_t lastByte = sendMostBlk(blkBuf);
-	genBlk(blkBuf); // prepare next block
+	uint8_t lastByte;
+	if(blkNum % 2) {
+		// Even
+		lastByte = sendMostBlk(blkBufs[1]);
+		genBlk(blkBuf[0]); // prepare next block
+	} else {
+		// Odd
+		lastByte = sendMostBlk(blkBufs[0]);
+		genBlk(blkBufs[1]); // prepare next block
+	}
 	sendLastByte(lastByte);
 }
 
@@ -161,6 +177,13 @@ void SenderX::resendBlk()
 {
 	// resend the block including the checksum
 	//  ***** You will have to write this simple function *****
+	if(blkNum % 2) {
+		// Even
+		sendMostBlk(blkBufs[1]);
+	} else {
+		// Odd
+		sendMostBlk(blkBufs[0]);
+	}
 }
 
 //Send 8 CAN characters in a row (in pairs spaced in time) to the
@@ -197,8 +220,6 @@ void SenderX::sendFile()
 		result = "OpenError";
 	}
 	else {
-
-
 		//blkNum = 0; // but first block sent will be block #1, not #0
 		prep1stBlk();
 
@@ -206,70 +227,121 @@ void SenderX::sendFile()
 		// below is just a starting point.  You can follow a
 		// 	different structure if you want.
 		char byteToReceive;
-
 		PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a 'C'
-
-		if(byteToReceive == NAK || byteToReceive =='C')
-		{
-			if(bytesRd != 0) 
-			{
-				if(byteToReceive == NAK)
-				{
-					Crcflg = false;
-					cs1stBlk();
-					firstCrcBlk = false;
-				}
-			}
-			if(bytesRd == 0) 
-			{
-				if(byteToReceive==NAK)
-				{
-					firstCrcBlk = false;
-				}
-				sendByte(EOT); // send the first EOT
-
-				PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a 'C'
-
-				if(byteToReceive == ACK)
-				{
-					result = "1st EOT ACK'd";
-					PE(myClose(transferringFileD));
-					return;
-				}
-				else if(byteToReceive == NAK)
-				{
-					sendByte(EOT); // send the second EOT
-					if(byteToReceive == ACK)
+		Crcflg = true;
+		
+		enum state { START, ACKNAK, EOT1, EOTEOT, CAN};
+		bool done = false;
+		state = START;
+		
+		while (!done) {
+			try {
+			switch (state){
+				case START:{
+					if(bytesRd)
 					{
+						if( byteToReceive == 'C' || 
+							byteToReceive == NAK ){
+							if(byteToReceive == NAK){
+								Crcflg = false;
+								cs1stBlk();
+								firstCrcBlk = false;
+								sendBlkPrepNext();
+							}
+							state = ACKNAK;
+						}
+					} else { // file is empty
+						if( byteToReceive == 'C' || 
+							byteToReceive == NAK ){
+							if(byteToReceive == NAK){
+								firstCrcBlk = false;
+							}
+							sendByte(EOT); // send the first EOT
+							state = EOT1;
+						}
+					}
+					// TODO: do we throw exception at START state?
+				}
+				case ACKNAK: {
+					if(bytesRd){
+						if( byteToReceive == ACK ) {
+							sendBlkPrepNext();
+							errCnt = 0;
+							firstCrcBlk = false;
+							state = ACKNAK;
+						}
+						else if( byteToReceive == NAK ||
+							 (byteToReceive == 'C' && firstCrcBlk ) &&
+							 (errCnt <= errB) ) // errB = 10, perform action at 11 times
+						{
+							resendBlk();
+							errCnt++;
+						} else if (byteToReceive == NAK && (errCnt >= errB)) {
+							can8();
+							result = "ExcessiveNAKs";
+							done = true;
+						}
+						} else if ( byteToReceive == CAN)
+							state = CAN;
+					}
+					else { // !bytesRd
+						if(byteToReceive == ACK) {
+							sendByte(EOT);
+							errCnt = 0;
+							firstCrcBlk = false;
+							state = EOT1;
+						}
+					}
+					// TODO: when to throw exception at ACKNAK state?
+				}
+				case EOT1: {
+					if(byteToReceive == NAK){
+						sendByte(EOT);
+						state = EOTEOT;
+					} else if(byteToReceive == ACK) {
+						result = "1st EOT ACK'd";
+						done = true;
+					} else {
+						throw; // unexpected char received
+					}	
+				}
+				case EOTEOT: {
+					if(byteToReceive == ACK) {
 						result = "Done";
-						PE(myClose(transferringFileD));
-						return;
+						done = true;
+					} else {
+						throw; // unexpected char received (NAK or other char)
 					}
 				}
+				case CAN: {
+					if(byteToReceive == CAN) {
+						result = "RcvCancelled";
+						done = true;
+					} else
+						throw; // unexpected char received. Expect: CAN
+				}
+				 
+					// unknown state
+				
 			}
-		}
-		
-		while (bytesRd) {
-			sendBlkPrepNext();
+			//sendBlkPrepNext();
 			// assuming below we get an ACK
 			PE_NOT(myRead(mediumD, &byteToReceive, 1), 1);
-			
-			if((byteToReceive == ACK) && bytesRd != 0)
-			{
-				errCnt = 0;
-				firstCrcBlk = false;
 			}
-			else if((byteToReceive == ACK) && bytesRd == 0)
+			catch(...)
 			{
-				sendByte(EOT); // send the first EOT
-				errCnt = 0;
-				firstCrcBlk = false;
+				cerr << "Sender received totally unexpected char #" << byteToReceive << ": " << \
+				(char)byteToReceive << endl;
+				PE(myClose(transferringFileD));
+				exit(EXIT_FAILURE);
 			}
 		}
-		sendByte(EOT); // send the first EOT
-		PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a NAK
-		sendByte(EOT); // send the second EOT
-		PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get an ACK
+		// ========================== Craig's Code ==========================
+		
+		//sendByte(EOT); // send the first EOT
+		//PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a NAK
+		//sendByte(EOT); // send the second EOT
+		//PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get an ACK
 
 		PE(myClose(transferringFileD));
 		/*
@@ -278,11 +350,7 @@ void SenderX::sendFile()
 		*/
 		result = "Done";  // should this be moved above somewhere??
 		
-		// -------craigs code------
-
-		// -------craigs code------
-
-
+		// ========================== Craig's Code ==========================
 	}
 }
 
