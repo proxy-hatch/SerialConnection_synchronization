@@ -163,7 +163,7 @@ void SenderX::sendBlkPrepNext()
 	if(blkNum % 2) {
 		// Even
 		lastByte = sendMostBlk(blkBufs[1]);
-		genBlk(blkBuf[0]); // prepare next block
+		genBlk(blkBufs[0]); // prepare next block
 	} else {
 		// Odd
 		lastByte = sendMostBlk(blkBufs[0]);
@@ -229,109 +229,112 @@ void SenderX::sendFile()
 		char byteToReceive;
 		PE_NOT(myRead(mediumD, &byteToReceive, 1), 1); // assuming get a 'C'
 		Crcflg = true;
-		
-		enum state { START, ACKNAK, EOT1, EOTEOT, CAN};
+
+		enum State { START, ACKNAK, EOT1, EOTEOT, CANC};
 		bool done = false;
-		state = START;
-		
+		State state = START;
+
 		while (!done) {
-			try {
-			switch (state){
-				case START:{
-					if(bytesRd)
-					{
-						if( byteToReceive == 'C' || 
-							byteToReceive == NAK ){
-							if(byteToReceive == NAK){
-								Crcflg = false;
-								cs1stBlk();
-								firstCrcBlk = false;
-								sendBlkPrepNext();
-							}
-							state = ACKNAK;
-						}
-					} else { // file is empty
-						if( byteToReceive == 'C' || 
-							byteToReceive == NAK ){
-							if(byteToReceive == NAK){
-								firstCrcBlk = false;
-							}
-							sendByte(EOT); // send the first EOT
-							state = EOT1;
-						}
-					}
-					// TODO: do we throw exception at START state?
-				}
-				case ACKNAK: {
-					if(bytesRd){
-						if( byteToReceive == ACK ) {
-							sendBlkPrepNext();
-							errCnt = 0;
-							firstCrcBlk = false;
-							state = ACKNAK;
-						}
-						else if( byteToReceive == NAK ||
-							 (byteToReceive == 'C' && firstCrcBlk ) &&
-							 (errCnt <= errB) ) // errB = 10, perform action at 11 times
+			try
+			{
+				switch (state){
+					case START:{
+						if(bytesRd)
 						{
-							resendBlk();
-							errCnt++;
-						} else if (byteToReceive == NAK && (errCnt >= errB)) {
-							can8();
-							result = "ExcessiveNAKs";
-							done = true;
+							if( byteToReceive == 'C' ||
+								byteToReceive == NAK ){
+								if(byteToReceive == NAK){
+									Crcflg = false;
+									cs1stBlk();
+									firstCrcBlk = false;
+									sendBlkPrepNext();
+								}
+								state = ACKNAK;
+							}
+						} else { // file is empty
+							if( byteToReceive == 'C' ||
+								byteToReceive == NAK ){
+								if(byteToReceive == NAK){
+									firstCrcBlk = false;
+								}
+								sendByte(EOT); // send the first EOT
+								state = EOT1;
+							}
 						}
-						} else if ( byteToReceive == CAN)
-							state = CAN;
+						break;
+						// TODO: do we throw exception at START state?
 					}
-					else { // !bytesRd
-						if(byteToReceive == ACK) {
+					case ACKNAK: {
+						if(bytesRd != 0){
+							if( byteToReceive == ACK ) {
+								sendBlkPrepNext();
+								edrrCnt = 0;
+								firstCrcBlk = false;
+								state = ACKNAK;
+							} else if( byteToReceive == NAK || (
+								 (byteToReceive == 'C' && firstCrcBlk ) &&
+								 (errCnt <= errB) )) // errB = 10, perform action at 11 times
+							{
+								resendBlk();
+								errCnt++;
+							} else if (byteToReceive == NAK && (errCnt >= errB)) {
+								can8();
+								result = "ExcessiveNAKs";
+								done = true;
+							} else if ( byteToReceive == CANC)
+								state = CANC;
+						}
+						else
+						{ // !bytesRd
+							if(byteToReceive == ACK) {
+								sendByte(EOT);
+								errCnt = 0;
+								firstCrcBlk = false;
+								state = EOT1;
+							}
+						}
+						break;
+						// TODO: when to throw exception at ACKNAK state?
+					}
+					case EOT1: {
+						if(byteToReceive == NAK){
 							sendByte(EOT);
-							errCnt = 0;
-							firstCrcBlk = false;
-							state = EOT1;
+							state = EOTEOT;
+						} else if(byteToReceive == ACK) {
+							result = "1st EOT ACK'd";
+							done = true;
+						} else {
+							throw; // unexpected char received
 						}
+						break;
 					}
-					// TODO: when to throw exception at ACKNAK state?
-				}
-				case EOT1: {
-					if(byteToReceive == NAK){
-						sendByte(EOT);
-						state = EOTEOT;
-					} else if(byteToReceive == ACK) {
-						result = "1st EOT ACK'd";
-						done = true;
-					} else {
-						throw; // unexpected char received
-					}	
-				}
-				case EOTEOT: {
-					if(byteToReceive == ACK) {
-						result = "Done";
-						done = true;
-					} else {
-						throw; // unexpected char received (NAK or other char)
+					case EOTEOT: {
+						if(byteToReceive == ACK) {
+							result = "Done";
+							done = true;
+						} else {
+							throw; // unexpected char received (NAK or other char)
+						}
+						break;
+					}
+					case CANC: {
+						if(byteToReceive == CAN) {
+							result = "RcvCancelled";
+							done = true;
+						} else {
+							throw; // unexpected char received. Expect: CAN
+						}
+						break;
 					}
 				}
-				case CAN: {
-					if(byteToReceive == CAN) {
-						result = "RcvCancelled";
-						done = true;
-					} else
-						throw; // unexpected char received. Expect: CAN
-				}
-				 
-					// unknown state
-				
-			}
+
 			//sendBlkPrepNext();
-			// assuming below we get an ACK
 			PE_NOT(myRead(mediumD, &byteToReceive, 1), 1);
+
 			}
 			catch(...)
 			{
-				cerr << "Sender received totally unexpected char #" << byteToReceive << ": " << \
-				(char)byteToReceive << endl;
+				cerr << "Sender received totally unexpected char #" << byteToReceive << ": " << (char)byteToReceive << endl;
 				PE(myClose(transferringFileD));
 				exit(EXIT_FAILURE);
 			}
