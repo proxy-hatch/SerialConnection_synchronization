@@ -63,7 +63,7 @@ void ReceiverX::receiveFile()
 	// inform sender that the receiver is ready and that the
 	//		sender can send the first block
 	
-	sendByte(NCGbyte); // 'C' or CRC by default
+	sendByte(NCGbyte); // 'C' (CRC case) by default
 
 	while(PE_NOT(myRead(mediumD, rcvBlk, 1), 1), (rcvBlk[0] == SOH))
 	{
@@ -95,7 +95,7 @@ void ReceiverX::getRestBlk()
 	goodBlk1st = goodBlk = true;
 }
 
-//Write chunk (data) in a received block to disk
+//Write chunk (data) in a received block to diskdddddddddd
 void ReceiverX::writeChunk()
 {
 	PE_NOT(write(transferringFileD, &rcvBlk[DATA_POS], CHUNK_SZ), CHUNK_SZ);

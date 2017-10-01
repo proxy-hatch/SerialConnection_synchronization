@@ -8,7 +8,8 @@ class ReceiverX : public PeerX
 public:
 	ReceiverX(int d, const char *fname, bool useCrc=true);
 
-	void receiveFile();
+	void receiveFile();	
+
 	void getRestBlk();	// get the remaining 131 bytes of a block
 	void writeChunk();
 	void can8();		// send 8 CAN characters
@@ -22,7 +23,7 @@ public:
 row sent because of problems like communication
 problems. An initial NAK (or 'C') does not add to the count. The reception
 of a particular block in good condition for the first time resets the count. */
-//	unsigned errCnt;
+	unsigned errCnt;
 
 private:
 	// blkT rcvBlk;		// a received block
