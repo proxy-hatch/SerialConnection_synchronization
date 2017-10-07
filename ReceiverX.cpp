@@ -109,6 +109,8 @@ void ReceiverX::receiveFile() {
 				} else if (rcvBlk[0] == CANC) {
 					state = CANC;
 				}
+				else
+					throw 0;
 				break;
 			}
 			case TRAN: {
@@ -169,6 +171,8 @@ void ReceiverX::receiveFile() {
 					result = "Done";
 					done = true;
 				}
+				else
+					throw 0;
 				break;
 			}
 			case CANC: {
@@ -177,13 +181,17 @@ void ReceiverX::receiveFile() {
 					result = "Done";
 					done = true;
 				}
+				// Ques: Can't go back to SOHEOT from CANC state (bytes got corrupted)
+				// What happens if don't get another cancel in CANC state
+				//else
+				//	throw 0;
 				break;
 			}
 			}
 
 		} catch (...) {
-			//cerr << "Sender received totally unexpected char #" << rcvBlk[0]
-			//		<< ": " << (unsigned) rcvBlk[0] << endl;
+			cerr << "Receiver received totally unexpected char #" << rcvBlk[0]
+					<< ": " << (unsigned) rcvBlk[0] << endl;
 			PE(myClose(transferringFileD));
 			exit (EXIT_FAILURE);
 		}
