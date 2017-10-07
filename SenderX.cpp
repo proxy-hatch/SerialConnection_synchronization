@@ -1,22 +1,22 @@
 //============================================================================
 //
-//% Student Name 1: student1
-//% Student 1 #: 123456781
-//% Student 1 userid (email): stu1 (stu1@sfu.ca)
+//% Student Name 1: Shawn (Yu Xuan) Wang
+//% Student 1 #: 301227972
+//% Student 1 userid (email): yxwang (stu1@sfu.ca)
 //
-//% Student Name 2: student2
-//% Student 2 #: 123456782
-//% Student 2 userid (email): stu2 (stu2@sfu.ca)
+//% Student Name 2: Sheung Yau Chung
+//% Student 2 #: 301236546
+//% Student 2 userid (email): sychung (stu2@sfu.ca)
 //
 //% Below, edit to list any people who helped you with the code in this file,
 //%      or put 'None' if nobody helped (the two of) you.
 //
 // Helpers: _everybody helped us/me with the assignment (list names or put 'None')__
-//
+// All TAs and the collective effort of the entire class through course piazza forum (including Dr Scratchley)
 // Also, list any resources beyond the course textbooks and the course pages on Piazza
 // that you used in making your submission.
 //
-// Resources:  ___________
+// Resources: ENSC 351 forum on piazza.com
 //
 //%% Instructions:
 //% * Put your name(s), student number(s), userid(s) in the above section.
@@ -42,6 +42,8 @@
 #include "VNPE.h"
 
 using namespace std;
+
+//#define _DEBUG
 
 SenderX::SenderX(const char *fname, int d) :
 		PeerX(d, fname), bytesRd(-1), firstCrcBlk(true), blkNum(0) // but first block sent will be block #1, not #0
@@ -132,7 +134,12 @@ void SenderX::prep1stBlk() {
 void SenderX::cs1stBlk() {
 	// **** this function will need to be modified ****
 	Crcflg = false;
-	genBlk(blkBufs[1]);
+
+	// get 1st blk from buffer and change CRC to checksum
+	blkBufs[0][PAST_CHUNK] = blkBufs[0][DATA_POS];
+	for (int ii = DATA_POS + 1; ii < DATA_POS + bytesRd; ii++)
+		blkBufs[0][PAST_CHUNK] += blkBufs[0][ii];
+
 }
 
 /* while sending the now current block for the first time, prepare the next block if possible.
@@ -167,17 +174,17 @@ void SenderX::sendBlkPrepNext() {
 
 // Resends the block that had been sent previously to the xmodem receiver
 void SenderX::resendBlk() {
-	// resend the block including the checksum
-	//  ***** You will have to write this simple function *****
-//	uint8_t lastByte;
-//	if (blkNum % 2) {
-//		// Even
-//		lastByte = sendMostBlk(blkBufs[1]);
-//	} else {
-//		// Odd
-//		lastByte = sendMostBlk(blkBufs[0]);
-//	}
-//	sendLastByte(lastByte);
+//	 resend the block including the checksum
+//	  ***** You will have to write this simple function *****
+	uint8_t lastByte;
+	if (blkNum % 2) {
+		// Even
+		lastByte = sendMostBlk(blkBufs[1]);
+	} else {
+		// Odd
+		lastByte = sendMostBlk(blkBufs[0]);
+	}
+	sendLastByte(lastByte);
 }
 
 //Send 8 CAN characters in a row (in pairs spaced in time) to the
@@ -232,13 +239,17 @@ void SenderX::sendFile() {
 			try {
 					switch (state) {
 					case START: {
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "START" <<  endl;
+#endif
 						if (!(byteToReceive == 'C' || byteToReceive == NAK))
-							throw;
+							throw 0;
 
 						if (bytesRd) {
 							if (byteToReceive == NAK) {
 								Crcflg = false;
-								cs1stBlk();
+								cs1stBlk();	// replace blkbufs[0] last byte to checksum
 								firstCrcBlk = false;
 							}
 							sendBlkPrepNext();
@@ -255,6 +266,10 @@ void SenderX::sendFile() {
 						// TODO: do we throw exception at START state?
 					}
 					case ACKNAK: {
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "@ACKNAK" << " received " << (int)byteToReceive  << endl;
+#endif
 						if (bytesRd != 0 && byteToReceive == ACK) {
 							sendBlkPrepNext();
 							errCnt = 0;
@@ -284,6 +299,10 @@ void SenderX::sendFile() {
 						// TODO: when to throw exception at ACKNAK state?
 					}
 					case EOT1: {
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "@EOT1" << " received " << (int)byteToReceive << endl;
+#endif
 						if (byteToReceive == NAK) {
 							sendByte(EOT);
 							state = EOTEOT;
@@ -296,6 +315,10 @@ void SenderX::sendFile() {
 						break;
 					}
 					case EOTEOT: {
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "@EOTEOT" << " received " << (int)byteToReceive  << endl;
+#endif
 						if (byteToReceive == ACK) {
 							result = "Done";
 							done = true;
@@ -305,9 +328,17 @@ void SenderX::sendFile() {
 						break;
 					}
 					case CANC: {
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "@CANC" << " received " << (int)byteToReceive  << endl;
+#endif
 						if (byteToReceive == CAN) {
 							result = "RcvCancelled";
 							done = true;
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "DONE" << endl;
+#endif
 						} else {
 							throw 0; // unexpected char received. Expect: CAN
 						}

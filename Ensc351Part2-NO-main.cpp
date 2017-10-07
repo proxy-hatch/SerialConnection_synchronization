@@ -1,22 +1,22 @@
 //============================================================================
 //
-//% Student Name 1: student1
-//% Student 1 #: 123456781
-//% Student 1 userid (email): stu1 (stu1@sfu.ca)
+//% Student Name 1: Shawn (Yu Xuan) Wang
+//% Student 1 #: 301227972
+//% Student 1 userid (email): yxwang (stu1@sfu.ca)
 //
-//% Student Name 2: student2
-//% Student 2 #: 123456782
-//% Student 2 userid (email): stu2 (stu2@sfu.ca)
+//% Student Name 2: Sheung Yau Chung
+//% Student 2 #: 301236546
+//% Student 2 userid (email): sychung (stu2@sfu.ca)
 //
 //% Below, edit to list any people who helped you with the code in this file,
 //%      or put 'None' if nobody helped (the two of) you.
 //
 // Helpers: _everybody helped us/me with the assignment (list names or put 'None')__
-//
+// All TAs and the collective effort of the entire class through course piazza forum (including Dr Scratchley)
 // Also, list any resources beyond the course textbooks and the course pages on Piazza
 // that you used in making your submission.
 //
-// Resources:  ___________
+// Resources: ENSC 351 forum on piazza.com
 //
 //%% Instructions:
 //% * Put your name(s), student number(s), userid(s) in the above section.
@@ -66,8 +66,8 @@ void termFunc(int termNum)
 	else {
 		PE_0(pthread_setname_np(pthread_self(), "T2")); // give the thread (terminal 2) a name
 
-//		const char *senderFileName = "/etc/mailcap"; // for ubuntu target
-		const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/tst_input.txt"; // for testing
+		const char *senderFileName = "/etc/mailcap"; // for ubuntu target
+		//const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/tst_input.txt"; // for testing
 		//const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/empty_input.txt"; // for testing
 		// const char *senderFileName = "/etc/printers/epijs.cfg"; // for QNX 6.5 target
 		// const char *senderFileName = "/etc/system/sapphire/PasswordManager.tr"; // for BB Playbook target
@@ -89,7 +89,7 @@ void mediumFunc(void)
 }
 */
 
-int main()
+int myMain()
 {
 	// ***** Modify this function to create the "Kind Medium" thread and communicate with it *****
 
