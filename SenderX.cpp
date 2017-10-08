@@ -178,11 +178,12 @@ void SenderX::resendBlk() {
 //	  ***** You will have to write this simple function *****
 	uint8_t lastByte;
 	if (blkNum % 2) {
-		// Even
-		lastByte = sendMostBlk(blkBufs[1]);
-	} else {
 		// Odd
 		lastByte = sendMostBlk(blkBufs[0]);
+	} else {
+		// Even
+		lastByte = sendMostBlk(blkBufs[1]);
+
 	}
 	sendLastByte(lastByte);
 }
@@ -243,6 +244,7 @@ void SenderX::sendFile() {
 	cout << "Sender: ";
 	cout << "START" <<  endl;
 #endif
+						// DONE: do we throw exception at START state? Ans: Yes, according to the sender state diagram.
 						if (!(byteToReceive == 'C' || byteToReceive == NAK))
 							throw 0;
 
@@ -263,7 +265,7 @@ void SenderX::sendFile() {
 							state = EOT1;
 						}
 						break;
-						// TODO: do we throw exception at START state?
+
 					}
 					case ACKNAK: {
 #ifdef _DEBUG
@@ -285,7 +287,7 @@ void SenderX::sendFile() {
 							can8();
 							result = "ExcessiveNAKs";
 							done = true;
-						} else if (byteToReceive == CANC) {
+						} else if (byteToReceive == CAN) {
 							state = CANC;
 						} else if (!bytesRd && byteToReceive == ACK) {
 							sendByte(EOT);
@@ -296,7 +298,7 @@ void SenderX::sendFile() {
 							throw 0;
 
 						break;
-						// TODO: when to throw exception at ACKNAK state?
+						// DONE: when to throw exception at ACKNAK state? ANS: when its a not covered char, already covered
 					}
 					case EOT1: {
 #ifdef _DEBUG
@@ -370,7 +372,7 @@ void SenderX::sendFile() {
 		 if (-1 == myClose(transferringFileD))
 		 VNS_ErrorPrinter("myClose(transferringFileD)", __func__, __FILE__, __LINE__, errno);
 		 */
-		result = "Done";  // should this be moved above somewhere??
+//		result = "Done";  // should this be moved above somewhere??
 
 		// ========================== Craig's Code ==========================
 	}

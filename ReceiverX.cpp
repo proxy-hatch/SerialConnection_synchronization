@@ -102,7 +102,7 @@ void ReceiverX::receiveFile() {
 				//cout << "Receiver: ";
 				//cout << "@TRAN" << endl;
 #endif
-				if (errCnt <= errB) {
+				if (errCnt <= errB) {		// Number of consecutive NAKs still within error Boundary
 
 					if (goodBlk) {
 #ifdef _DEBUG
@@ -127,13 +127,13 @@ void ReceiverX::receiveFile() {
 					}
 
 					state = SOHEOT;
-				} else {
+				} else {		// errCnt > errBoundary, initiate terminate by sending CAN8
 					can8();
 
 					if (errCnt == errB + 2)
-						result = "RcvCancelled";
+						result = "RcvCancelled because of unexpected blkNum";
 					else
-						result = "ScdCancelled";
+						result = "RcvCancelled because of exceeded errB";
 					done = true;
 				}
 				break;
@@ -156,7 +156,7 @@ void ReceiverX::receiveFile() {
 			case CANC: {
 				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
 				if (rcvBlk[0] == CAN) {
-					result = "Done";
+					result = "SndCancelled";
 					done = true;
 				}
 				// Ques: Can't go back to SOHEOT from CANC state (bytes got corrupted)
@@ -201,6 +201,11 @@ void ReceiverX::getRestBlk() {
 	// ********* this function must be improved ***********
 	PE_NOT(myReadcond(mediumD, &rcvBlk[1], REST_BLK_SZ_CRC, REST_BLK_SZ_CRC, 0, 0),
 			REST_BLK_SZ_CRC);
+
+	// TEST: intentionally scramble blkNum complement
+	if(rcvBlk[1]>0)
+		rcvBlk[2]=rcvBlk[2]-1;
+
 	goodBlk1st = goodBlk = true; // True by default. Only set to false when conditions are not met
 
 	// Block number and the 1's complement should
@@ -225,6 +230,11 @@ void ReceiverX::getRestBlk() {
 #ifdef _DEBUG
 		cout << endl << "Receiver: sends abort. " << endl;
 #endif
+		/* Since the rcver should always terminate and send CAN8 the moment it exceeds errB (errCnt = errB + 1),
+		 * we can use errB + 2 as a special case:
+		 * 		"blkNum exceeds the allowed window (eceptedBlkNum || eceptedBlkNum -1)"
+		 * It should then terminate with CAN8 as usual.
+		 */
 		errCnt = errB + 2;
 		return;
 	}
