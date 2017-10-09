@@ -42,7 +42,32 @@
 
 using namespace std;
 
-//#define _DEBUG
+#define _DEBUG
+
+#define ASCII(argStr) test_ASCII(argStr)
+
+string test_ASCII(int argStr) {
+	switch(argStr) {
+	case 1: // SOH
+		return "SOH";
+		break;
+	case 4: // EOT
+		return "EOT";
+		break;
+	case 6: //ACK
+		return "ACK";
+		break;
+	case 21: // NAK
+		return "NAK";
+		break;
+	case 24: //CAN
+		return "CAN";
+		break;
+	default:
+		return "Unknown ASCII";
+		break;
+	}
+}
 
 ReceiverX::ReceiverX(int d, const char *fname, bool useCrc) :
 		PeerX(d, fname, useCrc), goodBlk(false), goodBlk1st(false), numLastGoodBlk(
@@ -51,6 +76,7 @@ ReceiverX::ReceiverX(int d, const char *fname, bool useCrc) :
 }
 
 void ReceiverX::receiveFile() {
+
 	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 	// should we test for error and set result to "OpenError" if necessary?
 	transferringFileD = PE2(creat(fileName, mode), fileName);
@@ -60,8 +86,8 @@ void ReceiverX::receiveFile() {
 	// 	different structure if you want.
 	// inform sender that the receiver is ready and that the
 	//		sender can send the first block
-	sendByte(NCGbyte); // 'C' (CRC case) by default
-
+	//sendByte(NCGbyte); // 'C' (CRC case) by default
+	sendByte(NAK); // 'C' (CRC case) by default
 	enum State {
 		SOHEOT, // also represent START state
 		EOTEOT,
@@ -76,12 +102,13 @@ void ReceiverX::receiveFile() {
 		try {
 			switch (state) {
 			case SOHEOT: {
+				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
 #ifdef _DEBUG
 				cout << "Receiver: ";
-				cout << "@SOHEOT" << " received " << (int) rcvBlk[0] << " <- "
+				cout << "@SOHEOT" << " received " << ASCII((int)rcvBlk[0]) << " <- "
 						<< (int) rcvBlk[1] << endl;
 #endif
-				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
+
 
 				if (rcvBlk[0] == SOH) {
 					getRestBlk();
@@ -111,7 +138,7 @@ void ReceiverX::receiveFile() {
 						cout << endl;
 #endif
 						sendByte(ACK);
-						writeChunk();	// output data
+						if(goodBlk1st) writeChunk(); // output data
 						// update variables
 						numLastGoodBlk = rcvBlk[1];
 						errCnt = 0;
@@ -139,11 +166,12 @@ void ReceiverX::receiveFile() {
 				break;
 			}
 			case EOTEOT: {
+				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
 #ifdef _DEBUG
 				cout << "Receiver: ";
-				cout << "@SOHEOT" << " received " << (int) rcvBlk[0] << endl;
+				cout << "@SOHEOT" << " received " << ASCII((int)rcvBlk[0]) << endl;
 #endif
-				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
+
 				if (rcvBlk[0] == EOT) {
 					sendByte(ACK);
 					result = "Done";
@@ -155,21 +183,26 @@ void ReceiverX::receiveFile() {
 			}
 			case CANC: {
 				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
+#ifdef _DEBUG
+				cout << "Receiver: ";
+				cout << "@CAN" << " received " << ASCII((int)rcvBlk[0]) << endl;
+#endif
 				if (rcvBlk[0] == CAN) {
 					result = "SndCancelled";
 					done = true;
 				}
 				// Ques: Can't go back to SOHEOT from CANC state (bytes got corrupted)
 				// What happens if don't get another cancel in CANC state
-				//else
-				//	throw 0;
+				else
+					throw 0;
 				break;
 			}
 			}
 
 		} catch (...) {
-			cerr << "Receiver received totally unexpected char #" << rcvBlk[0]
-					<< ": " << (unsigned) rcvBlk[0] << endl;
+			cerr << "Receiver received totally unexpected char #"
+				 << (int)rcvBlk[0] << ": " << ASCII((int)rcvBlk[0])
+				 << endl;
 			PE(myClose(transferringFileD));
 			exit (EXIT_FAILURE);
 		}
@@ -203,8 +236,8 @@ void ReceiverX::getRestBlk() {
 			REST_BLK_SZ_CRC);
 
 	// TEST: intentionally scramble blkNum complement
-	if(rcvBlk[1]>0)
-		rcvBlk[2]=rcvBlk[2]-1;
+	//if(rcvBlk[1]>0)
+	//	rcvBlk[2]=rcvBlk[2]-1;
 
 	goodBlk1st = goodBlk = true; // True by default. Only set to false when conditions are not met
 
@@ -264,6 +297,7 @@ void ReceiverX::getRestBlk() {
 			//}
 			//else{
 			goodBlk1st = false;
+			goodBlk = false;
 		}
 	} else if (NCGbyte == NAK) {
 		// compares the least significant byte of the Sum with the checksum
@@ -274,13 +308,14 @@ void ReceiverX::getRestBlk() {
 			//	goodBlk1st = true;
 			//} else {
 			goodBlk1st = false;
+			goodBlk = false;
 		}
 	}
 
 #ifdef _DEBUG
 	cout << "Receiver: in getRestBlk(). rcvBlk contains ";
-	cout << "[0]:" << (int) rcvBlk[0] << " ";
-	cout << "[1]:" << (int) rcvBlk[1] << " ";
+	cout << "[0]:" << ASCII((int)rcvBlk[0]) << " ";
+	cout << "[1]:" << ASCII((int)rcvBlk[1]) << " ";
 //	cout << "[2]:" << (int) rcvBlk[2] << " ";
 //	cout << "numLastGoodBlk:" << (int) numLastGoodBlk << " ";
 //	cout << "CRCchecksum: " << CRCchecksum << " ";

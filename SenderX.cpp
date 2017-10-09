@@ -43,7 +43,32 @@
 
 using namespace std;
 
-//#define _DEBUG
+#define _DEBUG
+
+#define ASCII(argStr) testASCII(argStr)
+
+string testASCII(int argStr) {
+	switch(argStr) {
+	case 1: // SOH
+		return "SOH";
+		break;
+	case 4: // EOT
+		return "EOT";
+		break;
+	case 6: //ACK
+		return "ACK";
+		break;
+	case 21: // NAK
+		return "NAK";
+		break;
+	case 24: //CAN
+		return "CAN";
+		break;
+	default:
+		return "Unknown ASCII";
+		break;
+	}
+}
 
 SenderX::SenderX(const char *fname, int d) :
 		PeerX(d, fname), bytesRd(-1), firstCrcBlk(true), blkNum(0) // but first block sent will be block #1, not #0
@@ -154,6 +179,7 @@ void SenderX::sendBlkPrepNext() {
 	// **** this function will need to be modified ****
 	blkNum++; // 1st block about to be sent or previous block ACK'd
 	uint8_t lastByte;
+
 	if (blkNum % 2) {
 		// Odd
 		lastByte = sendMostBlk(blkBufs[0]);
@@ -219,6 +245,8 @@ void SenderX::sendFile() {
 				<< endl;
 		result = "OpenError";
 	} else {
+
+
 		//blkNum = 0; // but first block sent will be block #1, not #0
 		prep1stBlk();
 
@@ -270,7 +298,7 @@ void SenderX::sendFile() {
 					case ACKNAK: {
 #ifdef _DEBUG
 	cout << "Sender: ";
-	cout << "@ACKNAK" << " received " << (int)byteToReceive  << endl;
+	cout << "@ACKNAK" << " received " << ASCII((int)byteToReceive)  << endl;
 #endif
 						if (bytesRd != 0 && byteToReceive == ACK) {
 							sendBlkPrepNext();
@@ -283,6 +311,10 @@ void SenderX::sendFile() {
 								{
 							resendBlk();
 							errCnt++;
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "@ACKNAK" << " errCnt " <<  errCnt << endl;
+#endif
 						} else if (byteToReceive == NAK && (errCnt >= errB)) {
 							can8();
 							result = "ExcessiveNAKs";
@@ -290,9 +322,14 @@ void SenderX::sendFile() {
 						} else if (byteToReceive == CAN) {
 							state = CANC;
 						} else if (!bytesRd && byteToReceive == ACK) {
+
 							sendByte(EOT);
 							errCnt = 0;
 							firstCrcBlk = false;
+#ifdef _DEBUG
+	cout << "Sender: ";
+	cout << "@ACKNAK" << " errCnt " <<  errCnt << endl;
+#endif
 							state = EOT1;
 						} else
 							throw 0;
@@ -303,7 +340,7 @@ void SenderX::sendFile() {
 					case EOT1: {
 #ifdef _DEBUG
 	cout << "Sender: ";
-	cout << "@EOT1" << " received " << (int)byteToReceive << endl;
+	cout << "@EOT1" << " received " << ASCII((int)byteToReceive) << endl;
 #endif
 						if (byteToReceive == NAK) {
 							sendByte(EOT);
@@ -319,7 +356,7 @@ void SenderX::sendFile() {
 					case EOTEOT: {
 #ifdef _DEBUG
 	cout << "Sender: ";
-	cout << "@EOTEOT" << " received " << (int)byteToReceive  << endl;
+	cout << "@EOTEOT" << " received " << ASCII((int)byteToReceive)  << endl;
 #endif
 						if (byteToReceive == ACK) {
 							result = "Done";
@@ -332,7 +369,7 @@ void SenderX::sendFile() {
 					case CANC: {
 #ifdef _DEBUG
 	cout << "Sender: ";
-	cout << "@CANC" << " received " << (int)byteToReceive  << endl;
+	cout << "@CANC" << " received " << ASCII((int)byteToReceive)  << endl;
 #endif
 						if (byteToReceive == CAN) {
 							result = "RcvCancelled";
@@ -350,7 +387,7 @@ void SenderX::sendFile() {
 
 			} catch (...) {
 				cerr << "Sender received totally unexpected char #"
-						<< byteToReceive << ": " << (unsigned) byteToReceive
+						<< (int)byteToReceive << ": " << ASCII((int)byteToReceive)
 						<< endl;
 				PE(myClose(transferringFileD));
 				exit (EXIT_FAILURE);
