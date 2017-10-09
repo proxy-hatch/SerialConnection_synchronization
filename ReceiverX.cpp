@@ -42,7 +42,7 @@
 
 using namespace std;
 
-#define _DEBUG
+//#define _DEBUG
 
 #define ASCII(argStr) test_ASCII(argStr)
 
@@ -86,8 +86,8 @@ void ReceiverX::receiveFile() {
 	// 	different structure if you want.
 	// inform sender that the receiver is ready and that the
 	//		sender can send the first block
-	//sendByte(NCGbyte); // 'C' (CRC case) by default
-	sendByte(NAK); // 'C' (CRC case) by default
+	sendByte(NCGbyte); // 'C' (CRC case) by default
+
 	enum State {
 		SOHEOT, // also represent START state
 		EOTEOT,
@@ -314,9 +314,9 @@ void ReceiverX::getRestBlk() {
 
 #ifdef _DEBUG
 	cout << "Receiver: in getRestBlk(). rcvBlk contains ";
-	cout << "[0]:" << ASCII((int)rcvBlk[0]) << " ";
-	cout << "[1]:" << ASCII((int)rcvBlk[1]) << " ";
-//	cout << "[2]:" << (int) rcvBlk[2] << " ";
+	cout << "[0]:" << ASCII((int)rcvBlk[0]) << " "; // SOH
+	cout << "[1]:" << (int)rcvBlk[1] << " "; // blkNum
+//	cout << "[2]:" << (int) rcvBlk[2] << " "; // 1's Complement
 //	cout << "numLastGoodBlk:" << (int) numLastGoodBlk << " ";
 //	cout << "CRCchecksum: " << CRCchecksum << " ";
 //	cout << "msb: " << (int) MSB << " ";

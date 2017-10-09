@@ -43,7 +43,7 @@
 
 using namespace std;
 
-#define _DEBUG
+//#define _DEBUG
 
 #define ASCII(argStr) testASCII(argStr)
 
@@ -182,10 +182,21 @@ void SenderX::sendBlkPrepNext() {
 
 	if (blkNum % 2) {
 		// Odd
+
 		lastByte = sendMostBlk(blkBufs[0]);
 		genBlk(blkBufs[1]); // prepare next block
 	} else {
 		// Even
+
+#ifdef _DEBUG
+	// TEST data corruption (data flow 1)
+	//if(blkNum == 2) {
+	//	memcpy(blkBuf, blkBufs[1],BLK_SZ_CRC);
+	//	blkBuf[DATA_POS+1] = 0;
+		lastByte = sendMostBlk(blkBuf);
+	//}
+	//else
+#endif
 		lastByte = sendMostBlk(blkBufs[1]);
 		genBlk(blkBufs[0]); // prepare next block
 	}
