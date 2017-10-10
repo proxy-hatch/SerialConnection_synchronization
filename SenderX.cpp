@@ -317,7 +317,9 @@ void SenderX::sendFile() {
 						 * Thus we resend last blk to unblock rcver in this scenario.
 						 * Note if the rcver is in the middle of sending 8 bytes of CAN, this wouldn't affect anything
 						 */
-						resendBlk();
+						//resendBlk();
+						// Resending blk would prevent Rcver from hanging in the case of ACK/NAK corrupted to CAN
+//						// However for the scope of this assignment, this is a scenario that would not occur in the kind medium provided in Part 2
 						state = CANC;
 					} else if (!bytesRd && byteToReceive == ACK) {
 						sendByte(EOT);
