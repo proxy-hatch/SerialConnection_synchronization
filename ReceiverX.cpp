@@ -204,7 +204,7 @@ void ReceiverX::receiveFile() {
 					result = "Done";
 					done = true;
 				}
-				else if (rcvBlk[0] == SOH || rcvBlk[0] == EOT) {
+				else if (rcvBlk[0] == SOH || rcvBlk[0] == CAN) {
 					state = SOHEOT;
 					prevState = EOTEOT;
 				} else
