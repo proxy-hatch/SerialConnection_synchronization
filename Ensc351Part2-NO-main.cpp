@@ -45,54 +45,59 @@
 
 using namespace std;
 
-enum  {Term1, Term2};
-//enum  {TermSkt, MediumSkt};
+//enum  {Term1, Term2};
+enum  {TermSkt, MediumSkt};
 
-static int daSktPr[2];	  //Socket Pair between term1 and term2
-//static int daSktPrT1M[2];	  //Socket Pair between term1 and medium
-//static int daSktPrMT2[2];	  //Socket Pair between medium and term2
+//static int daSktPr[2];	  //Socket Pair between term1 and term2
+static int daSktPrT1M[2];	  //Socket Pair between term1 and medium
+static int daSktPrMT2[2];	  //Socket Pair between medium and term2
 
 void termFunc(int termNum)
 {
 	// ***** modify this function to communicate with the "Kind Medium" *****
 
-	if (termNum == Term1) {
+	if (termNum == daSktPrT1M[TermSkt]) {
 		const char *receiverFileName = "transferredFile";
 		COUT << "Will try to receive to file:  " << receiverFileName << endl;
 //		ReceiverX xReceiver(daSktPr[Term1], receiverFileName);
-		// ###TESTING
-		ReceiverX xReceiver(daSktPr[Term1], receiverFileName, false);
-
+//		ReceiverX xReceiver(daSktPrT1M[TermSkt], receiverFileName);
+		// ###Using Checksum
+		ReceiverX xReceiver(daSktPrT1M[TermSkt], receiverFileName, false);
 		xReceiver.receiveFile();
 		COUT << "xReceiver result was: " << xReceiver.result << endl;
+	    std::this_thread::sleep_for (std::chrono::milliseconds(1));
+		PE(myClose(daSktPrT1M[TermSkt]));
 	}
-	else {
+	else if(termNum==daSktPrMT2[TermSkt]) {
 		PE_0(pthread_setname_np(pthread_self(), "T2")); // give the thread (terminal 2) a name
 
-		// const char *senderFileName = "/etc/mailcap"; // for ubuntu target
-		const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/tst_input.txt"; // for testing
+//		 const char *senderFileName = "/etc/mailcap"; // for ubuntu target
+		const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/mailcap"; // for testing
+//		const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/tst_input.txt"; // for testing
 		//const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/tst_input_3_blocks.txt"; // for testing
-
 		//const char *senderFileName = "/home/osboxes/U_ensc251/workspace-cpp-Neon3/Ensc351Part2/src/empty_input.txt"; // for testing
 		// const char *senderFileName = "/etc/printers/epijs.cfg"; // for QNX 6.5 target
 		// const char *senderFileName = "/etc/system/sapphire/PasswordManager.tr"; // for BB Playbook target
 		COUT << "Will try to send the file:  " << senderFileName << endl;
-		SenderX xSender(senderFileName, daSktPr[Term2]);
+//		SenderX xSender(senderFileName, daSktPr[Term2]);
+		SenderX xSender(senderFileName, daSktPrMT2[TermSkt]);
+
 		xSender.sendFile();
 		COUT << "xSender result was: " << xSender.result << endl;
+	    std::this_thread::sleep_for (std::chrono::milliseconds(1));
+		PE(myClose(daSktPrMT2[TermSkt]));
 	}
-    std::this_thread::sleep_for (std::chrono::milliseconds(1));
-	PE(myClose(daSktPr[termNum]));
+//    std::this_thread::sleep_for (std::chrono::milliseconds(1));
+//	PE(myClose(daSktPr[termNum]));
 }
 
-/* // ***** you will need this at some point *****
+// ***** you will need this at some point *****
 void mediumFunc(void)
 {
 	PE_0(pthread_setname_np(pthread_self(), "M")); // give the thread (medium) a name
 	Medium medium(daSktPrT1M[MediumSkt],daSktPrMT2[MediumSkt], "xmodemData.dat");
 	medium.run();
 }
-*/
 
 int myMain()
 {
@@ -102,17 +107,23 @@ int myMain()
 
 	// ***** switch from having one socketpair for direct connection to having two socketpairs
 	//			for connection through medium thread *****
-	PE(mySocketpair(AF_LOCAL, SOCK_STREAM, 0, daSktPr));
-	//daSktPr[Term1] =  PE(/*myO*/open("/dev/ser2", O_RDWR));
+//	PE(mySocketpair(AF_LOCAL, SOCK_STREAM, 0, daSktPr));
+	PE(mySocketpair(AF_LOCAL, SOCK_STREAM, 0, daSktPrT1M));
+	PE(mySocketpair(AF_LOCAL, SOCK_STREAM, 0, daSktPrMT2));
 
-	thread term2Thrd(termFunc, Term2);
+	// daSktPr[Term1] =  PE(/*myO*/open("/dev/ser2", O_RDWR));
 
+//	thread term2Thrd(termFunc, Term2);
+	thread term2Thrd(termFunc, daSktPrMT2[TermSkt]);
 	// ***** create thread for medium *****
+	thread mediumThrd(mediumFunc);
 
-	termFunc(Term1);
+//	termFunc(Term1);
+	termFunc(daSktPrT1M[TermSkt]);
 
 	term2Thrd.join();
 	// ***** join with thread for medium *****
+	mediumThrd.join();
 
 	return EXIT_SUCCESS;
 }
