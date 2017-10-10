@@ -2,6 +2,14 @@
  * PeerX.cpp
  *
  *      Author: wcs
+ *      Modified:
+		% Student Name 1: Yu Xuan (Shawn) Wang
+		% Student 1 #: 301227972
+		% Student 1 userid (email): yxwang (stu1@sfu.ca)
+
+		% Student Name 2: Sheung Yau Chung
+		% Student 2 #: 301236546
+		% Student 2 userid (email): sychung (stu2@sfu.ca)
  */
 
 #include <arpa/inet.h>  // for htons() -- not available with MinGW
@@ -85,6 +93,23 @@ crc16ns (uint16_t* crc16nsP, uint8_t* buf)
 	 //else
 		 //sendline(checksum);
 }
+
+// returns a crc16 in 'network byte order'
+// derived from code in "rbsb.c" (see above)
+// line comments in function below show lines removed from original code
+void
+chksum8ns (uint8_t* chksum8nsP, uint8_t* buf)
+{
+	 register int wcj;
+	 register uint8_t *cp;
+	 uint8_t checksum=0;
+	 for (wcj=CHUNK_SZ,cp=buf; --wcj>=0; cp++) {
+		 checksum += *cp;
+	 }
+	 *chksum8nsP = checksum; // new
+}
+
+
 
 PeerX::
 PeerX(int d, const char *fname, bool useCrc)

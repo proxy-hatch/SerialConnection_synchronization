@@ -59,7 +59,10 @@ void termFunc(int termNum)
 	if (termNum == Term1) {
 		const char *receiverFileName = "transferredFile";
 		COUT << "Will try to receive to file:  " << receiverFileName << endl;
-		ReceiverX xReceiver(daSktPr[Term1], receiverFileName);
+//		ReceiverX xReceiver(daSktPr[Term1], receiverFileName);
+		// ###TESTING
+		ReceiverX xReceiver(daSktPr[Term1], receiverFileName, false);
+
 		xReceiver.receiveFile();
 		COUT << "xReceiver result was: " << xReceiver.result << endl;
 	}

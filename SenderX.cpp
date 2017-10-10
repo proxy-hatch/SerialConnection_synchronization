@@ -48,7 +48,7 @@ using namespace std;
 #define ASCII(argStr) testASCII(argStr)
 
 string testASCII(int argStr) {
-	switch(argStr) {
+	switch (argStr) {
 	case 1: // SOH
 		return "SOH";
 		break;
@@ -121,30 +121,17 @@ void SenderX::genBlk(uint8_t blkBuf[BLK_SZ_CRC]) {
 		uint8_t nextBlkNum = blkNum + 1;
 		blkBuf[SOH_OH] = nextBlkNum;
 		blkBuf[SOH_OH + 1] = ~nextBlkNum;
-		if (this->Crcflg) {
-			/*add padding*/
-			if (bytesRd < CHUNK_SZ) {
-				//pad ctrl-z for the last block
-				uint8_t padSize = CHUNK_SZ - bytesRd;
-				memset(blkBuf + DATA_POS + bytesRd, CTRL_Z, padSize);
-			}
-
+		/*add padding*/
+		if (bytesRd < CHUNK_SZ) {
+			//pad ctrl-z for the last block
+			uint8_t padSize = CHUNK_SZ - bytesRd;
+			memset(blkBuf + DATA_POS + bytesRd, CTRL_Z, padSize);
+		}
+		if (this->Crcflg)
 			/* calculate and add CRC in network byte order */
 			crc16ns((uint16_t*) &blkBuf[PAST_CHUNK], &blkBuf[DATA_POS]);
-		} else {
-			//checksum
-			blkBuf[PAST_CHUNK] = blkBuf[DATA_POS];
-			for (int ii = DATA_POS + 1; ii < DATA_POS + bytesRd; ii++)
-				blkBuf[PAST_CHUNK] += blkBuf[ii];
-
-			//padding
-			if (bytesRd < CHUNK_SZ) { // this line could be deleted
-				//pad ctrl-z for the last block
-				uint8_t padSize = CHUNK_SZ - bytesRd;
-				memset(blkBuf + DATA_POS + bytesRd, CTRL_Z, padSize);
-				blkBuf[PAST_CHUNK] += CTRL_Z * padSize;
-			}
-		}
+		else
+			chksum8ns(&blkBuf[PAST_CHUNK], &blkBuf[DATA_POS]);
 	}
 }
 
@@ -153,18 +140,12 @@ void SenderX::genBlk(uint8_t blkBuf[BLK_SZ_CRC]) {
 void SenderX::prep1stBlk() {
 	// **** this function will need to be modified ****
 	genBlk(blkBufs[0]);
-	//genBlk(blkBuf);
 }
 
 void SenderX::cs1stBlk() {
 	// **** this function will need to be modified ****
 	Crcflg = false;
-
-	// get 1st blk from buffer and change CRC to checksum
-	blkBufs[0][PAST_CHUNK] = blkBufs[0][DATA_POS];
-	for (int ii = DATA_POS + 1; ii < DATA_POS + bytesRd; ii++)
-		blkBufs[0][PAST_CHUNK] += blkBufs[0][ii];
-
+	chksum8ns(&blkBufs[0][PAST_CHUNK], &blkBufs[0][DATA_POS]);
 }
 
 /* while sending the now current block for the first time, prepare the next block if possible.
@@ -182,20 +163,18 @@ void SenderX::sendBlkPrepNext() {
 
 	if (blkNum % 2) {
 		// Odd
-
 		lastByte = sendMostBlk(blkBufs[0]);
 		genBlk(blkBufs[1]); // prepare next block
 	} else {
 		// Even
-
 #ifdef _DEBUG
-	// TEST data corruption (data flow 1)
-	//if(blkNum == 2) {
-	//	memcpy(blkBuf, blkBufs[1],BLK_SZ_CRC);
-	//	blkBuf[DATA_POS+1] = 0;
+		// ###TEST data corruption (data flow 1)
+		//if(blkNum == 2) {
+		//	memcpy(blkBuf, blkBufs[1],BLK_SZ_CRC);
+		//	blkBuf[DATA_POS+1] = 0;
 		lastByte = sendMostBlk(blkBuf);
-	//}
-	//else
+		//}
+		//else
 #endif
 		lastByte = sendMostBlk(blkBufs[1]);
 		genBlk(blkBufs[0]); // prepare next block
@@ -220,7 +199,6 @@ void SenderX::resendBlk() {
 	} else {
 		// Even
 		lastByte = sendMostBlk(blkBufs[1]);
-
 	}
 	sendLastByte(lastByte);
 }
@@ -257,7 +235,6 @@ void SenderX::sendFile() {
 		result = "OpenError";
 	} else {
 
-
 		//blkNum = 0; // but first block sent will be block #1, not #0
 		prep1stBlk();
 
@@ -277,129 +254,171 @@ void SenderX::sendFile() {
 		while (!done) {
 			PE_NOT(myRead(mediumD, &byteToReceive, 1), 1);
 			try {
-					switch (state) {
-					case START: {
+				switch (state) {
+				case START: {
 #ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "START" <<  endl;
+					cout << "Sender: ";
+					cout << "START" << endl;
 #endif
-						// DONE: do we throw exception at START state? Ans: Yes, according to the sender state diagram.
-						if (!(byteToReceive == 'C' || byteToReceive == NAK))
-							throw 0;
+					// DONE: do we throw exception at START state? Ans: Yes, according to the sender state diagram.
+					if (!(byteToReceive == 'C' || byteToReceive == NAK))
+						throw 0;
 
-						if (bytesRd) {
-							if (byteToReceive == NAK) {
-								Crcflg = false;
-								cs1stBlk();	// replace blkbufs[0] last byte to checksum
-								firstCrcBlk = false;
-							}
-							sendBlkPrepNext();
-							state = ACKNAK;
-						} else { // file is empty
-
-							if (byteToReceive == NAK) {
-								firstCrcBlk = false;
-							}
-							sendByte(EOT); // send the first EOT
-							state = EOT1;
-						}
-						break;
-
-					}
-					case ACKNAK: {
-#ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "@ACKNAK" << " received " << ASCII((int)byteToReceive)  << endl;
-#endif
-						if (bytesRd != 0 && byteToReceive == ACK) {
-							sendBlkPrepNext();
-							errCnt = 0;
+					if (bytesRd) {
+						if (byteToReceive == NAK) {
+							Crcflg = false;
+							cs1stBlk();	// replace blkbufs[0] last byte to checksum
 							firstCrcBlk = false;
-							state = ACKNAK;
-						} else if ((byteToReceive == NAK
-								|| (byteToReceive == 'C' && firstCrcBlk))
-								&& (errCnt <= errB)) // errB = 10, perform action at 11 times
-								{
-							resendBlk();
-							errCnt++;
+						}
+						sendBlkPrepNext();
+						state = ACKNAK;
+					} else { // file is empty/OPEN_ERROR
+
+						if (byteToReceive == NAK) {
+							firstCrcBlk = false;
+						}
+						sendByte(EOT); // send the first EOT
+						state = EOT1;
+					}
+					break;
+
+				}
+				case ACKNAK: {
 #ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "@ACKNAK" << " errCnt " <<  errCnt << endl;
+					cout << "Sender: ";
+					cout << "@ACKNAK" << " received " << ASCII((int)byteToReceive) << endl;
 #endif
-						} else if (byteToReceive == NAK && (errCnt >= errB)) {
+					if (bytesRd > 0 && byteToReceive == ACK) {
+						sendBlkPrepNext();
+//							// ###TESTING
+//							sendByte(CAN);
+
+						errCnt = 0;
+						firstCrcBlk = false;
+						state = ACKNAK;
+					} else if ((byteToReceive == NAK
+							|| (byteToReceive == 'C' && firstCrcBlk))
+							&& (errCnt <= errB)) // errB = 10, perform action at 11 times
+							{
+						resendBlk();
+						errCnt++;
+						state = ACKNAK;
+#ifdef _DEBUG
+						cout << "Sender: ";
+						cout << "@ACKNAK" << " errCnt " << errCnt << endl;
+#endif
+					} else if (byteToReceive == NAK && (errCnt > errB)) {
+						can8();
+						result = "ExcessiveNAKs";
+						done = true;
+					} else if (byteToReceive == CAN) {
+						/* if the CAN that sender just received was due to corruption (from ACK or NAK),
+						 * receiver will not proceed until hearing another msg from sender.
+						 * Thus we resend last blk to unblock rcver in this scenario.
+						 * Note if the rcver is in the middle of sending 8 bytes of CAN, this wouldn't affect anything
+						 */
+						resendBlk();
+						state = CANC;
+					} else if (!bytesRd && byteToReceive == ACK) {
+						sendByte(EOT);
+						errCnt = 0;
+						firstCrcBlk = false;
+#ifdef _DEBUG
+						cout << "Sender: ";
+						cout << "@ACKNAK" << " errCnt " << errCnt << endl;
+#endif
+						state = EOT1;
+					} else
+						throw 0;
+
+					break;
+					// DONE: when to throw exception at ACKNAK state? ANS: when its a not covered char, already covered
+				}
+				case EOT1: {
+#ifdef _DEBUG
+					cout << "Sender: ";
+					cout << "@EOT1" << " received " << ASCII((int)byteToReceive) << endl;
+#endif
+					if (byteToReceive == NAK) {
+						sendByte(EOT);
+						state = EOTEOT;
+					} else if (byteToReceive == ACK) {
+						result = "1st EOT ACK'd";
+						done = true;
+					} else {
+						throw 0; // CAN or unexpected char received
+					}
+					break;
+				}
+				case EOTEOT: {
+#ifdef _DEBUG
+					cout << "Sender: ";
+					cout << "@EOTEOT" << " received " << ASCII((int)byteToReceive) << endl;
+#endif
+					if (byteToReceive == ACK) {
+						result = "Done";
+						done = true;
+					} else if (byteToReceive == NAK) {
+						/* When the rcver NAKs twice in a row:
+						 * 1st EOT was rcved -> NAK -> second one corrupted -> Sender should resend 2nd EOT
+						 * 1st EOT was corrupted as well -> NAK(potentially rcver updated errCnt) -> Sender should resend 2nd EOT and acknowledge this corruption, by errCnt++ (and check if exceeded errB)
+						 * 						(if no more corruption: rcver should reply another NAK -> another resend in EOTEOT -> reply with ACK -> done)
+						 *
+						 */
+						if (++errCnt >= errB) {
 							can8();
 							result = "ExcessiveNAKs";
 							done = true;
-						} else if (byteToReceive == CAN) {
-							state = CANC;
-						} else if (!bytesRd && byteToReceive == ACK) {
+							break;
+						}
+						sendByte(EOT);
+						state = EOTEOT;
+					} else if (byteToReceive == CAN) {
+						/* Note: jumping to CANC state is perfectly fine.
+						 * EVEN if this CAN is due to corruption, we will go thru the whole EOT1 -> EOTEOT again, when we recover from CANC state back to ACKNAK
+						 */
+						state = CANC;
+					} else
+						throw 0; // unexpected char received (NAK or other char)
 
-							sendByte(EOT);
-							errCnt = 0;
-							firstCrcBlk = false;
+					break;
+				}
+				case CANC: {
 #ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "@ACKNAK" << " errCnt " <<  errCnt << endl;
+					cout << "Sender: ";
+					cout << "@CANC" << " received " << ASCII((int)byteToReceive) << endl;
 #endif
-							state = EOT1;
-						} else
-							throw 0;
-
-						break;
-						// DONE: when to throw exception at ACKNAK state? ANS: when its a not covered char, already covered
-					}
-					case EOT1: {
+					if (byteToReceive == CAN) {
+						result = "RcvCancelled";
+						done = true;
 #ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "@EOT1" << " received " << ASCII((int)byteToReceive) << endl;
+						cout << "Sender: ";
+						cout << "DONE" << endl;
 #endif
-						if (byteToReceive == NAK) {
-							sendByte(EOT);
-							state = EOTEOT;
-						} else if (byteToReceive == ACK) {
-							result = "1st EOT ACK'd";
+					} else if (byteToReceive == NAK || byteToReceive == ACK) {
+						// the last CAN that the sender rcved was due to error, update errCnt and check if > errB
+						// then recover to ACKNAK state
+						if (++errCnt >= errB) {
+							can8();
+							result = "ExcessiveNAKs";
 							done = true;
-						} else {
-							throw 0; // unexpected char received
+							break;
 						}
-						break;
-					}
-					case EOTEOT: {
-#ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "@EOTEOT" << " received " << ASCII((int)byteToReceive)  << endl;
-#endif
-						if (byteToReceive == ACK) {
-							result = "Done";
-							done = true;
-						} else {
-							throw 0; // unexpected char received (NAK or other char)
-						}
-						break;
-					}
-					case CANC: {
-#ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "@CANC" << " received " << ASCII((int)byteToReceive)  << endl;
-#endif
-						if (byteToReceive == CAN) {
-							result = "RcvCancelled";
-							done = true;
-#ifdef _DEBUG
-	cout << "Sender: ";
-	cout << "DONE" << endl;
-#endif
-						} else {
-							throw 0; // unexpected char received. Expect: CAN
-						}
-						break;
-					}
+						if (byteToReceive == NAK)
+							resendBlk();
+						else
+							sendBlkPrepNext();
+						state = ACKNAK;
+					} else
+						throw 0; // unexpected char received
+					break;
+				}
 				}
 
 			} catch (...) {
 				cerr << "Sender received totally unexpected char #"
-						<< (int)byteToReceive << ": " << ASCII((int)byteToReceive)
-						<< endl;
+						<< (int) byteToReceive << ": "
+						<< ASCII((int )byteToReceive) << endl;
 				PE(myClose(transferringFileD));
 				exit (EXIT_FAILURE);
 			}
@@ -421,7 +440,6 @@ void SenderX::sendFile() {
 		 VNS_ErrorPrinter("myClose(transferringFileD)", __func__, __FILE__, __LINE__, errno);
 		 */
 //		result = "Done";  // should this be moved above somewhere??
-
 		// ========================== Craig's Code ==========================
 	}
 }

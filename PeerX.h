@@ -47,6 +47,8 @@ typedef uint8_t blkT[BLK_SZ_CRC];
 
 void
 crc16ns (uint16_t* crc16nsP, uint8_t* buf);
+void
+chksum8ns (uint8_t* chksum8nsP, uint8_t* buf);
 
 class PeerX {
 public:

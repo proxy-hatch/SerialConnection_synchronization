@@ -1,6 +1,6 @@
 //============================================================================
 //
-//% Student Name 1: Shawn (Yu Xuan) Wang
+//% Student Name 1: Yu Xuan (Shawn) Wang
 //% Student 1 #: 301227972
 //% Student 1 userid (email): yxwang (stu1@sfu.ca)
 //
@@ -47,7 +47,7 @@ using namespace std;
 #define ASCII(argStr) test_ASCII(argStr)
 
 string test_ASCII(int argStr) {
-	switch(argStr) {
+	switch (argStr) {
 	case 1: // SOH
 		return "SOH";
 		break;
@@ -72,6 +72,7 @@ string test_ASCII(int argStr) {
 ReceiverX::ReceiverX(int d, const char *fname, bool useCrc) :
 		PeerX(d, fname, useCrc), goodBlk(false), goodBlk1st(false), numLastGoodBlk(
 				0) {
+	Crcflg = useCrc;
 	NCGbyte = useCrc ? 'C' : NAK;
 }
 
@@ -94,33 +95,48 @@ void ReceiverX::receiveFile() {
 		CANC,
 		TRAN // Transition State
 	};
+	// initialize variables
 	State state = SOHEOT;
+	State prevState = SOHEOT;
 	bool done = false;
 	errCnt = 0; // variable not initialized in constructor
+//	// ###TESTING
+//	errCnt=5;
 
-	while (!done) { //(EOTCount < 2)
+	while (!done) {
+		// TODO: move 'PE_NOT(myRead(mediumD, rcvBlk, 1), 1);' outside of state to avoid repetition/confusion
+		// only make this change after part 2, if its still needed
 		try {
 			switch (state) {
 			case SOHEOT: {
-				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
+				if(prevState != CANC && prevState != EOTEOT)	// if coming from CANC or EOTEOT, do not update rcvBlk again
+					PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
 #ifdef _DEBUG
 				cout << "Receiver: ";
 				cout << "@SOHEOT" << " received " << ASCII((int)rcvBlk[0]) << " <- "
-						<< (int) rcvBlk[1] << endl;
+				<< (int) rcvBlk[1] << endl;
 #endif
-
 
 				if (rcvBlk[0] == SOH) {
 					getRestBlk();
 					state = TRAN;
+					prevState = SOHEOT;
 				} else if (rcvBlk[0] == EOT) {
-					//EOTCount++;
 					sendByte(NAK);
 					state = EOTEOT;
+					prevState = SOHEOT;
 				} else if (rcvBlk[0] == CAN) {
+					// rcver NAKs this FIRST CAN, in case its a result of corruption
+					/* scenarios: (sender actual) -> (behaviour due to this NAK)
+					 * SOH -> resend
+					 * EOT -> continue to send second EOT
+					 * 			(rcver will then hang as it expects another EOT, but nothing we can do until implement timeout)
+					 * CAN -> no problem, sender does not even read this NAK, continues to send CANs
+					 */
+					sendByte(NAK);
 					state = CANC;
-				}
-				else
+					prevState = SOHEOT;
+				} else
 					throw 0;
 				break;
 			}
@@ -129,7 +145,7 @@ void ReceiverX::receiveFile() {
 				//cout << "Receiver: ";
 				//cout << "@TRAN" << endl;
 #endif
-				if (errCnt <= errB) {		// Number of consecutive NAKs still within error Boundary
+				if (errCnt <= errB) {// Number of consecutive NAKs still within error Boundary
 
 					if (goodBlk) {
 #ifdef _DEBUG
@@ -138,11 +154,22 @@ void ReceiverX::receiveFile() {
 						cout << endl;
 #endif
 						sendByte(ACK);
-						if(goodBlk1st) writeChunk(); // output data
-						// update variables
-						numLastGoodBlk = rcvBlk[1];
-						errCnt = 0;
+//						// ###TESTING
+//						if(errCnt==5){
+//							sendByte(CAN);
+//							errCnt=0;
+//						}else
+//							sendByte(ACK);
 
+
+						if (goodBlk1st){
+							// reset errCnt and output data
+							errCnt = 0;
+							writeChunk();
+							numLastGoodBlk = rcvBlk[1];
+						}
+						else
+							errCnt++;
 					} else {
 #ifdef _DEBUG
 						//cout << "Receiver: ";
@@ -152,9 +179,9 @@ void ReceiverX::receiveFile() {
 						sendByte(NAK);
 						errCnt++;
 					}
-
 					state = SOHEOT;
-				} else {		// errCnt > errBoundary, initiate terminate by sending CAN8
+					prevState = TRAN;
+				} else {// errCnt > errBoundary, initiate terminate by sending CAN8
 					can8();
 
 					if (errCnt == errB + 2)
@@ -177,23 +204,31 @@ void ReceiverX::receiveFile() {
 					result = "Done";
 					done = true;
 				}
-				else
+				else if (rcvBlk[0] == SOH || rcvBlk[0] == EOT) {
+					state = SOHEOT;
+					prevState = EOTEOT;
+				} else
 					throw 0;
 				break;
 			}
 			case CANC: {
+				// read the second blk after the first blk[0]=='CAN' occurence
 				PE_NOT(myRead(mediumD, rcvBlk, 1), 1);
 #ifdef _DEBUG
 				cout << "Receiver: ";
 				cout << "@CAN" << " received " << ASCII((int)rcvBlk[0]) << endl;
 #endif
-				if (rcvBlk[0] == CAN) {
+				if (rcvBlk[0] == CAN) {		// second CAN blk in a row
 					result = "SndCancelled";
 					done = true;
 				}
 				// Ques: Can't go back to SOHEOT from CANC state (bytes got corrupted)
 				// What happens if don't get another cancel in CANC state
-				else
+				// ANS: You CAN and SHOULD go back to SOHEOT from CANC if you dont rcv a second CAN
+				else if (rcvBlk[0] == SOH || rcvBlk[0] == EOT) {
+					state = SOHEOT;
+					prevState = CANC;
+				} else
 					throw 0;
 				break;
 			}
@@ -201,8 +236,8 @@ void ReceiverX::receiveFile() {
 
 		} catch (...) {
 			cerr << "Receiver received totally unexpected char #"
-				 << (int)rcvBlk[0] << ": " << ASCII((int)rcvBlk[0])
-				 << endl;
+					<< (int) rcvBlk[0] << ": " << ASCII((int )rcvBlk[0])
+					<< endl;
 			PE(myClose(transferringFileD));
 			exit (EXIT_FAILURE);
 		}
@@ -226,16 +261,12 @@ void ReceiverX::receiveFile() {
  time that the block was received in "good" condition.
  */
 void ReceiverX::getRestBlk() {
-	/*
-	 * Ques: 1. Do we remove padding? 2. should we test for error and set result to "OpenError" if necessary?
-	 * what is "an appropriate time?
-	 */
-
 	// ********* this function must be improved ***********
-	PE_NOT(myReadcond(mediumD, &rcvBlk[1], REST_BLK_SZ_CRC, REST_BLK_SZ_CRC, 0, 0),
-			REST_BLK_SZ_CRC);
+	PE_NOT(
+			myReadcond(mediumD, &rcvBlk[1], Crcflg==true?REST_BLK_SZ_CRC:REST_BLK_SZ_CS, Crcflg==true?REST_BLK_SZ_CRC:REST_BLK_SZ_CS, 0, 0),
+			Crcflg==true?REST_BLK_SZ_CRC:REST_BLK_SZ_CS);
 
-	// TEST: intentionally scramble blkNum complement
+	// ###TEST: intentionally scramble blkNum complement
 	//if(rcvBlk[1]>0)
 	//	rcvBlk[2]=rcvBlk[2]-1;
 
@@ -255,11 +286,11 @@ void ReceiverX::getRestBlk() {
 	// If not, cancel the transfer by sending 8 CAN bytes.
 	// i.e. last block is 2 but this blknum is 4
 	/* Corner case. */
-	uint8_t currBlkNum=numLastGoodBlk+1;		// expected current blkNum
-	if(currBlkNum==256)	// wrap around blkNum
-		currBlkNum=0;
+	uint8_t currBlkNum = numLastGoodBlk + 1;		// expected current blkNum
+	if (currBlkNum == 256)	// wrap around blkNum
+		currBlkNum = 0;
 
-	if (rcvBlk[1] != numLastGoodBlk  && rcvBlk[1] != currBlkNum) {
+	if (rcvBlk[1] != numLastGoodBlk && rcvBlk[1] != currBlkNum) {
 #ifdef _DEBUG
 		cout << endl << "Receiver: sends abort. " << endl;
 #endif
@@ -275,38 +306,25 @@ void ReceiverX::getRestBlk() {
 	// Prevent writing to file if same blkNum is received
 	if (rcvBlk[1] == numLastGoodBlk) {
 		goodBlk1st = false;
-		return;
+		// DO NOT return to catch corrupted bytes
+//		return;
 	}
 
-	// Add up all the bytes in the received chunk together
-	uint8_t chksum = rcvBlk[PAST_CHUNK];
-	uint8_t LSB, MSB, SUM;
-	uint16_t CRCchecksum;
-
-	// If LSB(SUM)=checksum, allow appending bytes to file
-	if (NCGbyte == 'C') {
+	uint16_t checksum;		// used for both crc and xmodemchksum case
+	if (Crcflg) {
 		/* calculate and add CRC in network byte order */
-		crc16ns(&CRCchecksum, &rcvBlk[DATA_POS]);
-		uint8_t LSB = (uint8_t) (CRCchecksum >> 8);
-		uint8_t MSB = (uint8_t) (CRCchecksum);
+		crc16ns(&checksum, &rcvBlk[DATA_POS]);
+		uint8_t LSB = (uint8_t) (checksum >> 8);
+		uint8_t MSB = (uint8_t) (checksum);
 		// Assume big endian, then read from right to left
 		// ie. MSB for 0xa3b4 is b4 (180 in decimal)
-
 		if (!((MSB == rcvBlk[PAST_CHUNK]) && (LSB == rcvBlk[PAST_CHUNK + 1]))) {
-			//goodBlk1st = true;
-			//}
-			//else{
 			goodBlk1st = false;
 			goodBlk = false;
 		}
-	} else if (NCGbyte == NAK) {
-		// compares the least significant byte of the Sum with the checksum
-		for (int ii = DATA_POS + 1; ii < DATA_POS + CHUNK_SZ; ii++)
-			SUM += rcvBlk[ii];
-
-		if (SUM != chksum) {
-			//	goodBlk1st = true;
-			//} else {
+	} else {
+		chksum8ns((uint8_t *)&checksum, &rcvBlk[DATA_POS]);
+		if ((uint8_t) checksum != rcvBlk[PAST_CHUNK]) {
 			goodBlk1st = false;
 			goodBlk = false;
 		}
@@ -315,7 +333,7 @@ void ReceiverX::getRestBlk() {
 #ifdef _DEBUG
 	cout << "Receiver: in getRestBlk(). rcvBlk contains ";
 	cout << "[0]:" << ASCII((int)rcvBlk[0]) << " "; // SOH
-	cout << "[1]:" << (int)rcvBlk[1] << " "; // blkNum
+	cout << "[1]:" << (int)rcvBlk[1] << " ";// blkNum
 //	cout << "[2]:" << (int) rcvBlk[2] << " "; // 1's Complement
 //	cout << "numLastGoodBlk:" << (int) numLastGoodBlk << " ";
 //	cout << "CRCchecksum: " << CRCchecksum << " ";
@@ -325,7 +343,6 @@ void ReceiverX::getRestBlk() {
 //	cout << "chksum:" << chksum << endl;
 	cout << endl;
 #endif
-
 }
 
 //Write chunk (data) in a received block to diskddddddddd
