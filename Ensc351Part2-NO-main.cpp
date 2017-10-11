@@ -62,7 +62,7 @@ void termFunc(int termNum)
 //		ReceiverX xReceiver(daSktPr[Term1], receiverFileName);
 //		ReceiverX xReceiver(daSktPrT1M[TermSkt], receiverFileName);
 		// ###Using Checksum
-		ReceiverX xReceiver(daSktPrT1M[TermSkt], receiverFileName, false);
+		ReceiverX xReceiver(daSktPrT1M[TermSkt], receiverFileName);
 		xReceiver.receiveFile();
 		COUT << "xReceiver result was: " << xReceiver.result << endl;
 	    std::this_thread::sleep_for (std::chrono::milliseconds(1));

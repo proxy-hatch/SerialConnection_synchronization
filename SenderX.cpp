@@ -172,7 +172,7 @@ void SenderX::sendBlkPrepNext() {
 		//if(blkNum == 2) {
 		//	memcpy(blkBuf, blkBufs[1],BLK_SZ_CRC);
 		//	blkBuf[DATA_POS+1] = 0;
-		lastByte = sendMostBlk(blkBuf);
+		//lastByte = sendMostBlk(blkBuf);
 		//}
 		//else
 #endif

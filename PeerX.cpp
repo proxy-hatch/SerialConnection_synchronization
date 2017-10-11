@@ -1,16 +1,36 @@
-/*
- * PeerX.cpp
- *
- *      Author: wcs
- *      Modified:
-		% Student Name 1: Yu Xuan (Shawn) Wang
-		% Student 1 #: 301227972
-		% Student 1 userid (email): yxwang (stu1@sfu.ca)
-
-		% Student Name 2: Sheung Yau Chung
-		% Student 2 #: 301236546
-		% Student 2 userid (email): sychung (stu2@sfu.ca)
- */
+//============================================================================
+//
+//% Student Name 1: Yu Xuan (Shawn) Wang
+//% Student 1 #: 301227972
+//% Student 1 userid (email): yxwang (stu1@sfu.ca)
+//
+//% Student Name 2: Sheung Yau Chung
+//% Student 2 #: 301236546
+//% Student 2 userid (email): sychung (stu2@sfu.ca)
+//
+//% Below, edit to list any people who helped you with the code in this file,
+//%      or put 'None' if nobody helped (the two of) you.
+//
+// Helpers: _everybody helped us/me with the assignment (list names or put 'None')__
+// All TAs and the collective effort of the entire class through course piazza forum (including Dr Scratchley)
+// Also, list any resources beyond the course textbooks and the course pages on Piazza
+// that you used in making your submission.
+//
+// Resources:  ENSC 351 forum on piazza.com
+//
+//%% Instructions:
+//% * Put your name(s), student number(s), userid(s) in the above section.
+//% * Also enter the above information in other files to submit.
+//% * Edit the "Helpers" line and, if necessary, the "Resources" line.
+//% * Your group name should be "P2_<userid1>_<userid2>" (eg. P1_stu1_stu2)
+//% * Form groups as described at:  https://courses.cs.sfu.ca/docs/students
+//% * Submit files to courses.cs.sfu.ca
+//
+// File Name   : PeerX.cpp
+// Version     : October 7th, 2017
+// Description : Starting point for ENSC 351 Project Part 2
+// Original portions Copyright (c) 2017 Craig Scratchley  (wcs AT sfu DOT ca)
+//============================================================================
 
 #include <arpa/inet.h>  // for htons() -- not available with MinGW
 #include "PeerX.h"
