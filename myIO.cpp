@@ -32,6 +32,13 @@ ssize_t myRead( int fildes, void* buf, size_t nbyte )
 
 ssize_t myWrite( int fildes, const void* buf, size_t nbyte )
 {
+	// Acquires a lock 
+	
+	// Call write()
+	
+	// Call myTcdrain() and wait until reader finish draining everything in the buffered 
+	
+	// Unlocks automatically when function goes out of scope  
 	return write(fildes, buf, nbyte );
 }
 
@@ -42,6 +49,12 @@ int myClose( int fd )
 
 int myTcdrain(int des)
 { //is also included for purposes of the course.
+	
+	// Wait on conditional variable. Put writer thread to sleep, 
+	// gives the lock to a reader thread, which will drain everything in the int buffered 
+	
+	// Notify a writer thread (use notifyall in the future) when buffered == 0
+	
 	return 0;
 }
 
