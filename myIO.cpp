@@ -56,26 +56,27 @@
 #include <iostream>		// cerr
 #endif
 
-
-
 struct sockInfo {
 	const int fd;	// negative file descriptor is invalid
 	int buffCnter;// used to keep track of how many chars are inside the buffer at a given moment
-				  // Positive: buffer filled with char awaiting to be read
+				  // Positive: buffer at file descriptor filled with char awaiting to be read
 				  // Negative: Invalid. exception
 				  // Zero: buffer empty (ready to accept new write requests from either direction)
-	mutable std::mutex mut;		// used to update buffCnter variable
-	mutable std::condition_variable cond;// used to wait and sleep threads calling myTcdrain()
-	mutable std::condition_variable cond;// used to wait and sleep threads calling myTcdrain()
-
+	mutable std::mutex buffMut;		// used to update buffCnter variable
+	mutable std::mutex cvMut;		// used to have threads wait() and notify(). Should not interfere with read/write privileges, thus deserve a mutex on its own.
+	mutable std::condition_variable cv;// used to wait and sleep threads calling myTcdrain()
 
 	// constructor
-	sockInfo(const int fildes) : fd(fildes), buffCnter(0){}
+	sockInfo(const int fildes) :
+			fd(fildes), buffCnter(0) {
+	}
 }/*socketPairInfo*/;
 // typedef not needed anymore in C++: https://stackoverflow.com/a/252867/5340330
 
 // instantiate vector container
-std::vector<sockInfo*> sockList (DEFAULT_CONTAINER_SIZE);
+std::vector<sockInfo*> sockList(DEFAULT_CONTAINER_SIZE);
+mutable std::mutex vectorMut;// used for opening, creating, or closing file descriptors.
+// Shared amongst all the objects in the vector.
 
 // |-------------------------------------------------------------------------|
 // |                          Helper Functions                               |
@@ -85,36 +86,83 @@ std::vector<sockInfo*> sockList (DEFAULT_CONTAINER_SIZE);
 sockInfo* getSockInfo(const int fd) {
 	if (fd < 0) {
 #ifdef _DEBUG
-		std::cerr << "getSockInfo(" << fd << ") invalid: Negative." << std::endl;
+		std::cerr << "getSockInfo(" << fd << ") invalid: Negative."
+				<< std::endl;
 #endif
 		return nullptr;
 	}
 	sockInfo* sock;
-	// search for socketPair
+	// search for socket
 	try {
-		sock = sockList.at(fd); // unordered_map::at throws an out-of-range
+		sock = sockList.at(fd); // vector::at() throws an out-of-range
 	} catch (const std::out_of_range& oor) {
 #ifdef _DEBUG
-		std::cerr << "Out of Range error: " << oor.what() << '\n';
+		std::cerr << "Out of Range error: " << oor.what() << std::endl;
 #endif
 		return nullptr;
 	}
 
-	return sock;
+	return sock;	// may return nullptr
 }
 
 // insert sockInfo entry at vector.at(fd)
 // return 0 upon success.
-// return 1 if there is an error (index occupied for example)
-int addSockInfo(sockInfo* newSock, int fd){
-	// error handle
-	if(sockList.at(fd)){
+// return 1 if there is an error
+int addSockInfo(const sockInfo* newSock, const int fd) {
+	sockInfo* sock;
+
+	// error handle: fd out of range
+	try {
+		sock = sockList.at(fd); // vector::at() throws an out-of-range
+	} catch (const std::out_of_range& oor) {
 #ifdef _DEBUG
-		std::cerr << "addSockInfo(" << fd << ") failed: sockInfo already created for fd." << std::endl;
+		std::cerr << "Out of Range error at addSockInfo(" << fd << "): "
+				<< oor.what() << std::endl;
 #endif
 		return 1;
 	}
-	sockList.at(fd) =newSock;
+
+	// error handle: sockInfo already exist
+	if (sock) {
+#ifdef _DEBUG
+		std::cerr << "addSockInfo(" << fd
+				<< ") failed: sockInfo already created for fd" << std::endl;
+#endif
+		return 1;
+	}
+
+	// Lock vector upon modifying
+	std::lock_guard<std::mutex> lk(vectorMut);
+	sockList.at(fd) = const_cast<sockInfo*> (newSock);	// compiler error of violating const of newSock: Force write with const_cast
+														// https://stackoverflow.com/a/731130
+	return 0;
+}
+
+// delete sockInfo entry at vector.at(fd)
+// return 0 upon success
+// return 1 if there is an error
+int delSockInfo(const int fd) {
+	sockInfo* sock;
+	// error handle: fd out of range
+	try {
+		sock = sockList.at(fd); // vector::at() throws an out-of-range
+	} catch (const std::out_of_range& oor) {
+#ifdef _DEBUG
+		std::cerr << "Out of Range error at addSockInfo(" << fd << "): "
+				<< oor.what() << std::endl;
+#endif
+		return 1;
+	}
+
+	// Lock vector upon modifying
+	if (sock) {
+		std::lock_guard<std::mutex> lk(vectorMut);
+		sockList.at(fd) = nullptr;
+	}
+	// 'delete' called outside lock_guard scope to avoid unnecessary overhead
+	if (sock)
+		delete sock;
+
 	return 0;
 }
 
@@ -135,13 +183,12 @@ int mySocketpair(int domain, int type, int protocol, int des[2]) {
 		// if the first one returned non-zero, do not proceed with the second one
 		// if the second one returned with non-zero, delete the first one
 		// Theoretically neither socket should be occupied already
-		if(addSockInfo(newSock0, des[0])){
+		if (addSockInfo(newSock0, des[0])) {
 			// error handle
 			returnVal = -1;
-		}
-		else if(addSockInfo(newSock1, des[1])){
+		} else if (addSockInfo(newSock1, des[1])) {
 			// delete first one if it did not give error
-			if(returnVal != -1)
+			if (returnVal != -1)
 				sockList.at(des[0]) = nullptr;
 			// error handle
 			returnVal = -1;
@@ -159,29 +206,68 @@ int myCreat(const char *pathname, mode_t mode) {
 }
 
 ssize_t myRead(int fildes, void* buf, size_t nbyte) {
-	if(buffCnter)
-	lock_guard
-	sockInfo* sock = getSockInfo(fildes);
+	// get socket info (return nullptr if not a socket)
+	sockInfo* readSock = getSockInfo(fildes);
 
-	return myReadcond(fildes, buf, nbyte, 1, 0, 0);
+	// no need to check if fildes is an actual socket because myReadcond() supports non-socket reads
+	// no need to check if fildes is in-use because myReadcond() also handle read fails
+	// If myReadcond() is blocked waiting to read,and then the socket closes. It will return with -1 (no hang)
+	int retVal = myReadcond(fildes, buf, nbyte, 1, 0, 0);
+
+	if (retVal == -1 || !readSock) {	// error or non-socket
+#ifdef _DEBUG
+		if (retVal == -1)
+			std::cerr << "myRead(" << fildes << ", buf, " << nbyte << ") failed"
+					<< std::endl;
+#endif _DEBUG
+		return retVal;
+	}
+
+	// at least 1 byte was read. lock and update buffCnter
+	// We are making the assumption here that in between myReadcon() returning and the following line, there has been no new write to fd.
+	/* this is a valid assumption because:
+	 * if myWrite(fd) happened before myReadcond(fd) was called, myReadcond(fd) would immediately return, becoming the next to hold mutex
+	 * If myWrite(fd) was called after myReadcond(fd) was called, myReadcond(fd) would immediately return  after myWrite(fd) was called, becoming the next to hold mutex
+	 * having ANOTHER writer acquiring mutex in between - the myWrite(fd) mentioned above releasing mutex and myReadcond(fd) acquiring mutex - is highly unlikely.
+	 */
+	std::unique_lock<std::mutex> lk(readSock->buffMut);
+	readSock->buffCnter = readSock->buffCnter - retVal;
+	lk.unlock();
+
+	// Only now we hold cvMut to notify threads waiting on tcDrain(fd), as holding two mutexes at a time is generally a bad idea
+	// While holding cvMut here at all seems inefficient and unnecessary, we have to hold it anyways,
+	// to reduce the change of e.g., myTcdrain(fd) getting called AFTER the notify_all() is called.
+	/* "
+	 * The notifying thread does not need to hold the lock on the same mutex as the one held by the waiting thread(s);
+	 * in fact doing so is a pessimization, since the notified thread would immediately block again, waiting for the notifying thread to release the lock
+	 * ...... Notifying while under the lock may nevertheless be necessary when precise scheduling of events is required
+	 * " - http://en.cppreference.com/w/cpp/thread/condition_variable/notify_one
+	 */
+	if(!readSock->buffCnter){
+		std::lock_guard<std::mutex> lk(readSock->cvMut);
+		// notify_all instead of notify_one is called here to handle the case of potentially multiple tcDrain waiting on fd.
+		readSock->cv.notify_all();
+	}
+
+	return retVal;
 }
 
 ssize_t myWrite(int fildes, const void* buf, size_t nbyte) {
-	// check if there is someone holding mutex
+// check if there is someone holding mutex
 
-	return write(fildes, buf, nbyte);
+return write(fildes, buf, nbyte);
 }
 
 // After talking with different TAs, it seems that one myClose(3) should close down its paired socket as well
 // i.e., calling myClose(4) as well
 int myClose(int fd) {
 
-	return close(fd);
+return close(fd);
 }
 
 // myTcdrain() blocks the calling thread until all previously written characters have actually been sent
 int myTcdrain(int des) { //is also included for purposes of the course.
-	return 0;
+return 0;
 }
 
 // as suggested in instruction document and by the TAs, myReadCond() is called inside of myRead()
@@ -192,6 +278,6 @@ int myTcdrain(int des) { //is also included for purposes of the course.
 // x < n && x > min: return x with x bytes read
 // x < min: block until x = min. Return x with x bytes read
 int myReadcond(int des, void * buf, int n, int min, int time, int timeout) {
-	return wcsReadcond(des, buf, n, min, time, timeout);
+return wcsReadcond(des, buf, n, min, time, timeout);
 }
 
