@@ -62,9 +62,8 @@ struct sockInfo {
 				  // Positive: buffer at file descriptor filled with char awaiting to be read
 				  // Negative: Invalid. exception
 				  // Zero: buffer empty (ready to accept new write requests from either direction)
-	mutable std::mutex buffMut;		// used to update buffCnter variable
-	mutable std::mutex cvMut;		// used to have threads wait() and notify(). Should not interfere with read/write privileges, thus deserve a mutex on its own.
-	mutable std::condition_variable cv;// used to wait and sleep threads calling myTcdrain()
+	mutable std::mutex buffMut;	// used to update buffCnter variable upon read()/write(), as well as control wait()s and notify()s
+	mutable std::condition_variable cv;	// used to wait and notify threads calling myTcdrain()
 
 	// constructor
 	sockInfo(const int fildes) :
@@ -75,7 +74,7 @@ struct sockInfo {
 
 // instantiate vector container
 std::vector<sockInfo*> sockList(DEFAULT_CONTAINER_SIZE);
-mutable std::mutex vectorMut;// used for opening, creating, or closing file descriptors.
+std::mutex vectorMut;// used for opening, creating, or closing file descriptors.
 // Shared amongst all the objects in the vector.
 
 // |-------------------------------------------------------------------------|
@@ -133,8 +132,8 @@ int addSockInfo(const sockInfo* newSock, const int fd) {
 
 	// Lock vector upon modifying
 	std::lock_guard<std::mutex> lk(vectorMut);
-	sockList.at(fd) = const_cast<sockInfo*> (newSock);	// compiler error of violating const of newSock: Force write with const_cast
-														// https://stackoverflow.com/a/731130
+	sockList.at(fd) = const_cast<sockInfo*>(newSock); // compiler error of violating const of newSock: Force write with const_cast
+													  // https://stackoverflow.com/a/731130
 	return 0;
 }
 
@@ -227,27 +226,27 @@ ssize_t myRead(int fildes, void* buf, size_t nbyte) {
 	// We are making the assumption here that in between myReadcon() returning and the following line, there has been no new write to fd.
 	/* this is a valid assumption because:
 	 * if myWrite(fd) happened before myReadcond(fd) was called, myReadcond(fd) would immediately return, becoming the next to hold mutex
-	 * If myWrite(fd) was called after myReadcond(fd) was called, myReadcond(fd) would immediately return  after myWrite(fd) was called, becoming the next to hold mutex
+	 * If myWrite(fd) was called after myReadcond(fd) was called, myReadcond(fd) would immediately return  after myWrite(fd) finishes, becoming the next to hold mutex
 	 * having ANOTHER writer acquiring mutex in between - the myWrite(fd) mentioned above releasing mutex and myReadcond(fd) acquiring mutex - is highly unlikely.
+	 * having ANOTHER tcDrain() thread acquiring mutex in between - does not pose a contradiction.
 	 */
-	std::unique_lock<std::mutex> lk(readSock->buffMut);
-	readSock->buffCnter = readSock->buffCnter - retVal;
-	lk.unlock();
+	{
+		std::lock_guard<std::mutex> lk(readSock->buffMut);
+		readSock->buffCnter = readSock->buffCnter - retVal;
+	}
 
-	// Only now we hold cvMut to notify threads waiting on tcDrain(fd), as holding two mutexes at a time is generally a bad idea
-	// While holding cvMut here at all seems inefficient and unnecessary, we have to hold it anyways,
-	// to reduce the change of e.g., myTcdrain(fd) getting called AFTER the notify_all() is called.
+	// While holding the same mutex for notify()ing seems necessary for precise scheduling,
+	// (i.e., tcDrain()::wait()s should happen before or after the notify(), not at the same time.)
+	// it is inefficient to do so.	see for more: https://stackoverflow.com/a/17102100
+	// Therefore we call notify_all only after immediate release of mutex
 	/* "
 	 * The notifying thread does not need to hold the lock on the same mutex as the one held by the waiting thread(s);
 	 * in fact doing so is a pessimization, since the notified thread would immediately block again, waiting for the notifying thread to release the lock
 	 * ...... Notifying while under the lock may nevertheless be necessary when precise scheduling of events is required
 	 * " - http://en.cppreference.com/w/cpp/thread/condition_variable/notify_one
 	 */
-	if(!readSock->buffCnter){
-		std::lock_guard<std::mutex> lk(readSock->cvMut);
-		// notify_all instead of notify_one is called here to handle the case of potentially multiple tcDrain waiting on fd.
-		readSock->cv.notify_all();
-	}
+	// notify_all instead of notify_one is called here to handle the case of potentially multiple tcDrain waiting on fd.
+	readSock->cv.notify_all();
 
 	return retVal;
 }
@@ -255,19 +254,28 @@ ssize_t myRead(int fildes, void* buf, size_t nbyte) {
 ssize_t myWrite(int fildes, const void* buf, size_t nbyte) {
 // check if there is someone holding mutex
 
-return write(fildes, buf, nbyte);
+	return write(fildes, buf, nbyte);
 }
 
 // After talking with different TAs, it seems that one myClose(3) should close down its paired socket as well
 // i.e., calling myClose(4) as well
 int myClose(int fd) {
 
-return close(fd);
+	return close(fd);
 }
 
 // myTcdrain() blocks the calling thread until all previously written characters have actually been sent
 int myTcdrain(int des) { //is also included for purposes of the course.
-return 0;
+	sockInfo* sock = getSockInfo(des);
+
+	// while reading buffCnter does not cause concurrency issues, it is necessary to hold the mutex before reading,
+	// in case of buffCnter being updated after reading,  causing invalid judgement of whether to wait or not.
+	// e.g., (buffCnter!=0) == true --> myRead() made buffCnter=0 and notify_all() --> myTcdrain() misses notify_all() and now waits despite buffCnter==0
+	std::unique_lock<std::mutex> lk(sock->buffMut);
+	if (sock->buffCnter)
+		sock->cv.wait(lk, [] {return !(sock->buffCnter);});
+
+	return 0;
 }
 
 // as suggested in instruction document and by the TAs, myReadCond() is called inside of myRead()
@@ -278,6 +286,6 @@ return 0;
 // x < n && x > min: return x with x bytes read
 // x < min: block until x = min. Return x with x bytes read
 int myReadcond(int des, void * buf, int n, int min, int time, int timeout) {
-return wcsReadcond(des, buf, n, min, time, timeout);
+	return wcsReadcond(des, buf, n, min, time, timeout);
 }
 
