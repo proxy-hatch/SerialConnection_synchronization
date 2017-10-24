@@ -1,0 +1,32 @@
+1. Download Ensc351Part2.zip from Canvas
+2. Go to https://csil-git1.cs.surrey.sfu.ca/ensc351wcs/ensc351lib/tree/master
+3. See last commit
+4. Go to Ensc351 Lib folder
+5. Replace SocketReadcond.c file
+6. Download Ensc351Part2-soln-updated.zip from Canvas
+7. Copy all of the following files to Ensc351Part2/Ensc351Part2/src folder :
+
+ReceiverSS.cpp
+ReceiverSS.h
+SenderSS.cpp
+SenderSS.h
+
+main.cc
+Medium.cpp
+Medium.h
+
+PeerX.cpp
+PeerX.h
+ReceiverX.cpp
+ReceiverX.h
+SenderX.cpp
+Sender.h
+
+8. Copy Ensc351Part2-NO-main.cpp to Ensc351Part2/src folder
+9. Delete Ensc351Part2.cpp
+10. Add following macro to Ensc351Part2-NO-main.cpp
+
+#include "SenderSS.h"
+#include "ReceiverSS.h"
+
+

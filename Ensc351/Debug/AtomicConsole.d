@@ -1,0 +1,1 @@
+AtomicConsole.o: ../AtomicConsole.c
